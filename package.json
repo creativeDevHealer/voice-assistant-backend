@@ -1,0 +1,23 @@
+{
+  "name": "outbound-ivr-TeXML",
+  "version": "1.0.0",
+  "description": "Creates an outbound call and IVR",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index",
+    "debug": "nodemon index",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.11.0",
+    "cors": "^2.8.5",
+    "dotenv": "^8.2.0",
+    "express": "^4.17.1",
+    "firebase": "^12.1.0",
+    "firebase-admin": "^12.0.0",
+    "nodemon": "^2.0.6",
+    "telnyx": "^1.10.2"
+  }
+}
