@@ -27,13 +27,28 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
+// Helper function to remove undefined values from objects
+function cleanUndefinedValues(obj) {
+  const cleaned = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined && value !== null) {
+      cleaned[key] = value;
+    }
+  }
+  return cleaned;
+}
+
 class FirebaseService {
   // Store call data in Firebase
   async storeCallData(callControlId, callData) {
     try {
       const docRef = db.collection('calls').doc(callControlId);
+      
+      // Clean undefined values to prevent Firestore errors
+      const cleanedData = cleanUndefinedValues(callData);
+      
       await docRef.set({
-        ...callData,
+        ...cleanedData,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
@@ -49,12 +64,37 @@ class FirebaseService {
   async updateCallStatus(callControlId, status, additionalData = {}) {
     try {
       const docRef = db.collection('calls').doc(callControlId);
-      await docRef.update({
+      
+      // Clean undefined values to prevent Firestore errors
+      const cleanedData = cleanUndefinedValues({
         status: status,
-        ...additionalData,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        ...additionalData
       });
-      console.log(`Call status updated for ${callControlId}: ${status}`);
+      
+      // Debug: Log what we're trying to update
+      console.log(`Updating call ${callControlId} with:`, JSON.stringify(cleanedData, null, 2));
+      
+      // Check if document exists first
+      const doc = await docRef.get();
+      
+      if (doc.exists) {
+        // Document exists, update it
+        await docRef.update({
+          ...cleanedData,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      } else {
+        // Document doesn't exist, create it
+        console.log(`Document for ${callControlId} doesn't exist, creating it...`);
+        await docRef.set({
+          callControlId: callControlId,
+          ...cleanedData,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
+      
+      console.log(`✅ Call status updated for ${callControlId}: ${status}`);
       return true;
     } catch (error) {
       console.error('Error updating call status:', error);
@@ -130,8 +170,12 @@ class FirebaseService {
   async storeBroadcastSession(broadcastId, sessionData) {
     try {
       const docRef = db.collection('broadcasts').doc(broadcastId);
+      
+      // Clean undefined values to prevent Firestore errors
+      const cleanedData = cleanUndefinedValues(sessionData);
+      
       await docRef.set({
-        ...sessionData,
+        ...cleanedData,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
@@ -147,8 +191,12 @@ class FirebaseService {
   async updateBroadcastSession(broadcastId, updateData) {
     try {
       const docRef = db.collection('broadcasts').doc(broadcastId);
+      
+      // Clean undefined values to prevent Firestore errors
+      const cleanedData = cleanUndefinedValues(updateData);
+      
       await docRef.update({
-        ...updateData,
+        ...cleanedData,
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
       console.log(`Broadcast session updated: ${broadcastId}`);
