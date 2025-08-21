@@ -2,8 +2,8 @@ const express  = require('express');
 const router = module.exports = express.Router();
 const axios = require('axios');
 
-// Use shared in-memory storage for testing (temporary replacement for Firebase)
-const firebaseService = require('./memoryStorage');
+// Use Firebase for persistent storage
+const firebaseService = require('./firebaseService');
 
 
 const webhookController = async (req, res) => {

@@ -7,16 +7,16 @@ if (!admin.apps.length) {
     if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
       const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
       admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-        databaseURL: process.env.FIREBASE_DATABASE_URL
+        credential: admin.credential.cert(serviceAccount)
+        // No databaseURL needed for Firestore
       });
     } else {
       // For development, you can use a service account key file
       // Make sure to add your firebase-service-account.json file to the backend folder
       // and add it to .gitignore for security
       admin.initializeApp({
-        credential: admin.credential.applicationDefault(),
-        databaseURL: process.env.FIREBASE_DATABASE_URL
+        credential: admin.credential.applicationDefault()
+        // No databaseURL needed for Firestore
       });
     }
     console.log('Firebase Admin SDK initialized successfully');

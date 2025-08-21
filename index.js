@@ -4,8 +4,8 @@ const express = require('express');
 const cors = require('cors');
 const telnyx = require('telnyx')(process.env.TELNYX_API_KEY);
 
-// Use shared in-memory storage for testing (temporary replacement for Firebase)
-const firebaseService = require('./memoryStorage');
+// Use Firebase for persistent storage
+const firebaseService = require('./firebaseService');
 
 const callControlPath = '/call-control';
 const callControlOutboundPath = `${callControlPath}/webhook`;
