@@ -1,7 +1,9 @@
 const express  = require('express');
 const router = module.exports = express.Router();
 const axios = require('axios');
-const firebaseService = require('./firebaseService');
+
+// Use shared in-memory storage for testing (temporary replacement for Firebase)
+const firebaseService = require('./memoryStorage');
 
 
 const webhookController = async (req, res) => {
@@ -107,17 +109,30 @@ const webhookController = async (req, res) => {
         // Mark as completed when speaking is done
         await firebaseService.updateCallStatus(callControlId, 'completed');
         
-        // Hang up the call after speaking
-        try {
-          await axios.post(
-            `https://api.telnyx.com/v2/calls/${encodeURIComponent(callControlId)}/actions/hangup`,
-            {},
-            { headers: { Authorization: `Bearer ${process.env.TELNYX_API_KEY}` } }
-          );
-          console.log(`Hanging up call ${callControlId} after speaking`);
-        } catch (hangupError) {
-          console.error('Error hanging up call:', hangupError);
-        }
+        // Wait a moment then try to hang up the call after speaking
+        setTimeout(async () => {
+          try {
+            await axios.post(
+              `https://api.telnyx.com/v2/calls/${encodeURIComponent(callControlId)}/actions/hangup`,
+              {},
+              { headers: { Authorization: `Bearer ${process.env.TELNYX_API_KEY}` } }
+            );
+            console.log(`Successfully hung up call ${callControlId} after speaking`);
+          } catch (hangupError) {
+            if (hangupError.response?.status === 422) {
+              console.log(`Call ${callControlId} already ended or cannot be hung up (422) - this is normal`);
+            } else if (hangupError.response?.status === 404) {
+              console.log(`Call ${callControlId} not found (404) - call may have already ended`);
+            } else {
+              console.error(`Error hanging up call ${callControlId}:`, {
+                status: hangupError.response?.status,
+                statusText: hangupError.response?.statusText,
+                data: hangupError.response?.data?.errors || hangupError.response?.data,
+                message: hangupError.message
+              });
+            }
+          }
+        }, 1000); // Wait 1 second before hanging up
         break;
 
       case 'call.bridged':
