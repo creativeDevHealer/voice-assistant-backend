@@ -115,9 +115,9 @@ app.post('/api/make-call', async (req, res) => {
 
         console.log(`✅ Created call ${results.successful} for ${phone}, call_control_id: ${callControlId}`);
         
-        // Much longer delay between calls to respect very low channel limits
+        // Reduced delay between calls for 10 concurrent call limit
         if (i < phoneNumbers.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay between each call
+          await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay between each call
         }
 
       } catch (error) {
