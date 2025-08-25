@@ -339,7 +339,7 @@ app.post('/api/cancel-all-calls', async (req, res) => {
       for (const call of activeCalls) {
         try {
           // Try to hangup the call via Telnyx API
-          await telnyx.calls.hangup(call.callControlId);
+          await telnyx.calls.hangup({ call_control_id: call.callControlId });
           
           // Update status in Firebase
           await firebaseService.updateCallStatus(call.callControlId, 'canceled');
