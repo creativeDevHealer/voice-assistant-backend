@@ -153,7 +153,7 @@ class FirebaseService {
 
       // Calculate aggregate counts
       const completedStatuses = ['completed', 'answered', 'voicemail', 'busy'];
-      const failedStatuses = ['failed', 'no-answer', 'canceled'];
+      const failedStatuses = ['failed', 'no-answer', 'canceled', 'timeout'];
       
       counts.totalCompleted = completedStatuses.reduce((sum, status) => sum + counts[status], 0);
       counts.totalFailed = failedStatuses.reduce((sum, status) => sum + counts[status], 0);
