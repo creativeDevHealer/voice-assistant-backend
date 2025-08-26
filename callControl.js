@@ -22,11 +22,9 @@ const webhookController = async (req, res) => {
     // Update call status in Firebase based on event type
     switch (type) {
       case 'call.initiated':
-        await firebaseService.updateCallStatus(callControlId, 'initiated');
-        break;
-
-      case 'call.ringing':
-        await firebaseService.updateCallStatus(callControlId, 'ringing');
+        await firebaseService.updateCallStatus(callControlId, 'initiated', {
+          startTime: new Date().toISOString()
+        });
         break;
 
       case 'call.answered':
@@ -52,8 +50,41 @@ const webhookController = async (req, res) => {
             console.log(`Speaking script for call ${callControlId}`);
           } catch (speakError) {
             console.error('Error speaking script:', speakError);
+            
+            // If speaking fails, still set a fallback timeout to hang up
+            setTimeout(async () => {
+              try {
+                await axios.post(
+                  `https://api.telnyx.com/v2/calls/${encodeURIComponent(callControlId)}/actions/hangup`,
+                  {},
+                  { headers: { Authorization: `Bearer ${process.env.TELNYX_API_KEY}` } }
+                );
+                console.log(`Hung up call ${callControlId} after speak error`);
+              } catch (hangupError) {
+                console.error(`Error hanging up call ${callControlId} after speak error:`, hangupError);
+              }
+            }, 10000); // 10 second fallback timeout
           }
         }
+        
+        // Set maximum call duration timeout (60 seconds) as a safety net
+        setTimeout(async () => {
+          try {
+            await axios.post(
+              `https://api.telnyx.com/v2/calls/${encodeURIComponent(callControlId)}/actions/hangup`,
+              {},
+              { headers: { Authorization: `Bearer ${process.env.TELNYX_API_KEY}` } }
+            );
+            console.log(`Hung up call ${callControlId} due to maximum duration timeout`);
+            await firebaseService.updateCallStatus(callControlId, 'timeout');
+          } catch (hangupError) {
+            if (hangupError.response?.status === 422 || hangupError.response?.status === 404) {
+              console.log(`Call ${callControlId} already ended when trying timeout hangup - this is normal`);
+            } else {
+              console.error(`Error hanging up call ${callControlId} on timeout:`, hangupError);
+            }
+          }
+        }, 60000); // 60 second maximum call duration
         break;
 
       case 'call.hangup':
@@ -67,8 +98,11 @@ const webhookController = async (req, res) => {
           status = 'busy';
         } else if (hangupCause === 'CANCEL') {
           status = 'canceled';
+        } else if (hangupCause === 'timeout') {
+          status = 'timeout';
+        } else if (hangupCause === 'normal_clearing') {
+          status = 'normal_clearing';
         }
-        
         await firebaseService.updateCallStatus(callControlId, status, {
           hangupCause: hangupCause,
           duration: event?.data?.payload?.call_duration_secs
@@ -77,9 +111,7 @@ const webhookController = async (req, res) => {
 
       case 'call.machine.detection.ended':
         const machineDetection = event?.data?.payload?.machine_detection_result;
-        if (machineDetection === 'human') {
-          await firebaseService.updateCallStatus(callControlId, 'answered');
-        } else if (machineDetection === 'machine') {
+        if (machineDetection === 'machine') {
           await firebaseService.updateCallStatus(callControlId, 'voicemail');
           
           // Still speak the script for voicemail
@@ -102,6 +134,8 @@ const webhookController = async (req, res) => {
               console.error('Error speaking to voicemail:', speakError);
             }
           }
+        } else {
+          console.log(`Machine detection result for ${callControlId}: ${machineDetection} (human detected)`);
         }
         break;
 
@@ -109,7 +143,31 @@ const webhookController = async (req, res) => {
         // Mark as completed when speaking is done
         await firebaseService.updateCallStatus(callControlId, 'completed');
         
-        // Wait a moment then try to hang up the call after speaking
+        // Get call data to check when call started for minimum duration enforcement
+        const callDataForDuration = await firebaseService.getCallData(callControlId);
+        
+        // Calculate minimum hangup delay to ensure calls are at least 7 seconds long
+        const calculateHangupDelay = () => {
+          // Default 2 second delay to let the spoken message settle
+          let delay = 2000;
+          
+          // If we have call start time, ensure minimum 7 seconds total duration
+          if (callDataForDuration?.startTime) {
+            const callStartTime = new Date(callDataForDuration.startTime);
+            const currentTime = new Date();
+            const currentDuration = (currentTime.getTime() - callStartTime.getTime()) / 1000;
+            
+            if (currentDuration < 7) {
+              // Add extra delay to reach 7 seconds minimum
+              delay = Math.max(delay, (7 - currentDuration) * 1000);
+              console.log(`Call ${callControlId} duration ${currentDuration}s, adding ${delay/1000}s delay for minimum duration`);
+            }
+          }
+          
+          return delay;
+        };
+        
+        // Wait for calculated delay then try to hang up the call
         setTimeout(async () => {
           try {
             await axios.post(
@@ -132,7 +190,7 @@ const webhookController = async (req, res) => {
               });
             }
           }
-        }, 1000); // Wait 1 second before hanging up
+        }, calculateHangupDelay());
         break;
 
       case 'call.bridged':
