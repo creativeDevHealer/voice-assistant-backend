@@ -71,19 +71,19 @@ app.post('/api/make-call', async (req, res) => {
       channelLimitHits: 0
     };
 
-    for (let i = 0; i < phoneNumbers.length; i++) {
-      const phone = phoneNumbers[i]?.trim();
-      const contactId = contactIds[i]?.trim() || `contact_${i}`;
-      const contactName = contactNames[i]?.trim() || `Contact ${i + 1}`;
-      const script = contents[i] || contents[0]; // Use individual content or first one
-
+    // Process calls in parallel with controlled concurrency
+    const MAX_CONCURRENT_CALLS = 10; // Respect Telnyx concurrent call limit
+    const callPromises = [];
+    
+    // Create call creation function
+    const createCall = async (phone, contactId, contactName, script, index) => {
       if (!phone) {
-        console.log(`Skipping empty phone number at index ${i}`);
+        console.log(`Skipping empty phone number at index ${index}`);
         results.failed++;
-        continue;
+        return null;
       }
 
-      console.log(`Processing call ${i + 1}/${phoneNumbers.length} for ${phone}`);
+      console.log(`🔄 Initiating call ${index + 1}/${phoneNumbers.length} for ${phone}`);
 
       try {
         const createCallRequest = {
@@ -97,9 +97,6 @@ app.post('/api/make-call', async (req, res) => {
         const { data: call } = await telnyx.calls.create(createCallRequest);
         const callControlId = call.call_control_id;
         
-        callSids.push(callControlId);
-        results.successful++;
-
         // Store call data in storage
         await firebaseService.storeCallData(callControlId, {
           callSid: callControlId,
@@ -113,12 +110,8 @@ app.post('/api/make-call', async (req, res) => {
           status: 'pending'
         });
 
-        console.log(`✅ Created call ${results.successful} for ${phone}, call_control_id: ${callControlId}`);
-        
-        // Reduced delay between calls for 10 concurrent call limit
-        if (i < phoneNumbers.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay between each call
-        }
+        console.log(`✅ Created call for ${phone}, call_control_id: ${callControlId}`);
+        return { success: true, callControlId, phone, contactId, contactName, script };
 
       } catch (error) {
         const errorMsg = error.response?.data?.errors?.[0]?.detail || error.message;
@@ -128,7 +121,7 @@ app.post('/api/make-call', async (req, res) => {
           results.channelLimitHits++;
           
           // Dynamic wait time based on how many times we've hit the limit
-          const waitTime = Math.min(15000 + (results.channelLimitHits * 5000), 60000); // 15s + 5s per hit, max 60s
+          const waitTime = Math.min(15000 + (results.channelLimitHits * 5000), 60000);
           console.warn(`⚠️ Channel limit exceeded for ${phone} (hit #${results.channelLimitHits}), waiting ${waitTime/1000} seconds and retrying...`);
           
           await new Promise(resolve => setTimeout(resolve, waitTime));
@@ -145,9 +138,6 @@ app.post('/api/make-call', async (req, res) => {
             const { data: retryCall } = await telnyx.calls.create(retryRequest);
             const retryCallControlId = retryCall.call_control_id;
             
-            callSids.push(retryCallControlId);
-            results.successful++;
-
             await firebaseService.storeCallData(retryCallControlId, {
               callSid: retryCallControlId,
               callLegId: retryCall.call_leg_id,
@@ -161,42 +151,17 @@ app.post('/api/make-call', async (req, res) => {
             });
 
             console.log(`✅ Retry successful for ${phone}, call_control_id: ${retryCallControlId}`);
+            return { success: true, callControlId: retryCallControlId, phone, contactId, contactName, script };
             
           } catch (retryError) {
-            results.failed++;
             const retryErrorMsg = retryError.response?.data?.errors?.[0]?.detail || retryError.message;
             results.errors.push({ phone, error: `Retry failed: ${retryErrorMsg}` });
             
             console.error(`❌ Retry failed for ${phone}:`, retryErrorMsg);
             
-            // If we're hitting too many consecutive channel limits, abort the batch
-            if (results.channelLimitHits >= 3 && retryErrorMsg.includes('channel limit exceeded')) {
-              console.warn(`🛑 Too many channel limit hits (${results.channelLimitHits}), aborting remaining calls in this batch to prevent account throttling`);
-              
-              // Mark remaining calls as failed to avoid infinite channel limit loops
-              for (let j = i + 1; j < phoneNumbers.length; j++) {
-                const remainingPhone = phoneNumbers[j]?.trim();
-                if (remainingPhone) {
-                  results.failed++;
-                  results.errors.push({ phone: remainingPhone, error: 'Batch aborted due to excessive channel limits' });
-                  
-                  await firebaseService.storeCallData(`aborted_${Date.now()}_${j}`, {
-                    broadcastId: broadcastId,
-                    contactId: contactIds[j]?.trim() || `contact_${j}`,
-                    contactName: contactNames[j]?.trim() || `Contact ${j + 1}`,
-                    phoneNumber: remainingPhone,
-                    script: contents[j] || contents[0],
-                    status: 'failed',
-                    error: 'Batch aborted due to excessive channel limits'
-                  });
-                }
-              }
-              break; // Exit the loop
-            }
-            
             // Store failed call attempt
             try {
-              await firebaseService.storeCallData(`failed_${Date.now()}_${i}`, {
+              await firebaseService.storeCallData(`failed_${Date.now()}_${index}`, {
                 broadcastId: broadcastId,
                 contactId: contactId,
                 contactName: contactName,
@@ -208,17 +173,18 @@ app.post('/api/make-call', async (req, res) => {
             } catch (storageError) {
               console.error('Error storing failed call data:', storageError);
             }
+            
+            return { success: false, phone, error: retryErrorMsg };
           }
         } else {
           // Non-channel-limit errors (invalid numbers, etc.)
-          results.failed++;
           results.errors.push({ phone, error: errorMsg });
           
           console.error(`❌ Error creating call for ${phone}:`, errorMsg);
           
           // Store failed call attempt
           try {
-            await firebaseService.storeCallData(`failed_${Date.now()}_${i}`, {
+            await firebaseService.storeCallData(`failed_${Date.now()}_${index}`, {
               broadcastId: broadcastId,
               contactId: contactId,
               contactName: contactName,
@@ -230,6 +196,59 @@ app.post('/api/make-call', async (req, res) => {
           } catch (storageError) {
             console.error('Error storing failed call data:', storageError);
           }
+          
+          return { success: false, phone, error: errorMsg };
+        }
+      }
+    };
+
+    // Process calls in parallel with controlled concurrency
+    for (let i = 0; i < phoneNumbers.length; i++) {
+      const phone = phoneNumbers[i]?.trim();
+      const contactId = contactIds[i]?.trim() || `contact_${i}`;
+      const contactName = contactNames[i]?.trim() || `Contact ${i + 1}`;
+      const script = contents[i] || contents[0];
+
+      // Add call to promises array
+      callPromises.push(createCall(phone, contactId, contactName, script, i));
+      
+      // Control concurrency - wait if we have too many active calls
+      if (callPromises.length >= MAX_CONCURRENT_CALLS) {
+        console.log(`📞 Processing batch of ${MAX_CONCURRENT_CALLS} parallel calls...`);
+        const batchResults = await Promise.allSettled(callPromises);
+        
+        // Process results
+        for (const result of batchResults) {
+          if (result.status === 'fulfilled' && result.value?.success) {
+            callSids.push(result.value.callControlId);
+            results.successful++;
+          } else {
+            results.failed++;
+          }
+        }
+        
+        // Clear promises array for next batch
+        callPromises.length = 0;
+        
+        // Small delay between batches to prevent overwhelming the API
+        if (i < phoneNumbers.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+      }
+    }
+
+    // Process remaining calls
+    if (callPromises.length > 0) {
+      console.log(`📞 Processing final batch of ${callPromises.length} parallel calls...`);
+      const batchResults = await Promise.allSettled(callPromises);
+      
+      // Process results
+      for (const result of batchResults) {
+        if (result.status === 'fulfilled' && result.value?.success) {
+          callSids.push(result.value.callControlId);
+          results.successful++;
+        } else {
+          results.failed++;
         }
       }
     }
