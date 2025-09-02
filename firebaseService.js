@@ -218,6 +218,7 @@ class FirebaseService {
       snapshot.forEach(doc => {
         calls.push({
           callControlId: doc.id,
+          callSid: doc.id, // Add callSid for consistency
           ...doc.data()
         });
       });
@@ -265,6 +266,7 @@ class FirebaseService {
       snapshot.forEach(doc => {
         activeCalls.push({
           callControlId: doc.id,
+          callSid: doc.id, // Add callSid for consistency
           ...doc.data()
         });
       });

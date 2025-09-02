@@ -47,10 +47,18 @@ app.post('/api/make-call', async (req, res) => {
     }
 
     // Parse comma-separated values
-    const phoneNumbers = phonenumber.split(',');
-    const contactIds = contact_id ? contact_id.split(',') : [];
-    const contactNames = contact_name ? contact_name.split(',') : [];
+    const phoneNumbers = phonenumber.split(',').map(p => p.trim()).filter(p => p);
+    const contactIds = contact_id ? contact_id.split(',').map(c => c.trim()) : [];
+    const contactNames = contact_name ? contact_name.split(',').map(n => n.trim()) : [];
     const contents = Array.isArray(content) ? content : [content];
+
+    // Validate input
+    if (phoneNumbers.length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No valid phone numbers provided' 
+      });
+    }
 
     const callSids = [];
     const broadcastId = `broadcast_${Date.now()}`;
@@ -58,11 +66,16 @@ app.post('/api/make-call', async (req, res) => {
     console.log(`Starting broadcast ${broadcastId} for ${phoneNumbers.length} numbers`);
 
     // Store broadcast session
-    await firebaseService.storeBroadcastSession(broadcastId, {
-      totalCalls: phoneNumbers.length,
-      status: 'active',
-      startTime: new Date()
-    });
+    try {
+      await firebaseService.storeBroadcastSession(broadcastId, {
+        totalCalls: phoneNumbers.length,
+        status: 'active',
+        startTime: new Date()
+      });
+    } catch (firebaseError) {
+      console.error('Error storing broadcast session:', firebaseError);
+      // Continue with broadcast even if Firebase storage fails
+    }
 
     const results = {
       successful: 0,
@@ -72,7 +85,7 @@ app.post('/api/make-call', async (req, res) => {
     };
 
     // Process calls in parallel with controlled concurrency
-    const MAX_CONCURRENT_CALLS = 10; // Respect Telnyx concurrent call limit
+    const MAX_CONCURRENT_CALLS = 8; // Reduced from 10 to avoid channel capacity issues
     const callPromises = [];
     
     // Create call creation function
@@ -98,17 +111,22 @@ app.post('/api/make-call', async (req, res) => {
         const callControlId = call.call_control_id;
         
         // Store call data in storage
-        await firebaseService.storeCallData(callControlId, {
-          callSid: callControlId,
-          callLegId: call.call_leg_id,
-          callSessionId: call.call_session_id,
-          broadcastId: broadcastId,
-          contactId: contactId,
-          contactName: contactName,
-          phoneNumber: phone,
-          script: script,
-          status: 'pending'
-        });
+        try {
+          await firebaseService.storeCallData(callControlId, {
+            callSid: callControlId,
+            callLegId: call.call_leg_id,
+            callSessionId: call.call_session_id,
+            broadcastId: broadcastId,
+            contactId: contactId,
+            contactName: contactName,
+            phoneNumber: phone,
+            script: script,
+            status: 'pending'
+          });
+        } catch (storageError) {
+          console.error('Error storing call data:', storageError);
+          // Continue with call even if storage fails
+        }
 
         console.log(`✅ Created call for ${phone}, call_control_id: ${callControlId}`);
         return { success: true, callControlId, phone, contactId, contactName, script };
@@ -120,9 +138,9 @@ app.post('/api/make-call', async (req, res) => {
         if (isChannelLimitError) {
           results.channelLimitHits++;
           
-          // Dynamic wait time based on how many times we've hit the limit
-          const waitTime = Math.min(15000 + (results.channelLimitHits * 5000), 60000);
-          console.warn(`⚠️ Channel limit exceeded for ${phone} (hit #${results.channelLimitHits}), waiting ${waitTime/1000} seconds and retrying...`);
+                     // Dynamic wait time based on how many times we've hit the limit
+           const waitTime = Math.min(30000 + (results.channelLimitHits * 10000), 120000); // Increased wait times
+           console.warn(`⚠️ Channel capacity reached for ${phone} (hit #${results.channelLimitHits}), waiting ${waitTime/1000} seconds and retrying...`);
           
           await new Promise(resolve => setTimeout(resolve, waitTime));
           
@@ -138,17 +156,22 @@ app.post('/api/make-call', async (req, res) => {
             const { data: retryCall } = await telnyx.calls.create(retryRequest);
             const retryCallControlId = retryCall.call_control_id;
             
-            await firebaseService.storeCallData(retryCallControlId, {
-              callSid: retryCallControlId,
-              callLegId: retryCall.call_leg_id,
-              callSessionId: retryCall.call_session_id,
-              broadcastId: broadcastId,
-              contactId: contactId,
-              contactName: contactName,
-              phoneNumber: phone,
-              script: script,
-              status: 'pending'
-            });
+            try {
+              await firebaseService.storeCallData(retryCallControlId, {
+                callSid: retryCallControlId,
+                callLegId: retryCall.call_leg_id,
+                callSessionId: retryCall.call_session_id,
+                broadcastId: broadcastId,
+                contactId: contactId,
+                contactName: contactName,
+                phoneNumber: phone,
+                script: script,
+                status: 'pending'
+              });
+            } catch (storageError) {
+              console.error('Error storing retry call data:', storageError);
+              // Continue with call even if storage fails
+            }
 
             console.log(`✅ Retry successful for ${phone}, call_control_id: ${retryCallControlId}`);
             return { success: true, callControlId: retryCallControlId, phone, contactId, contactName, script };
@@ -222,6 +245,12 @@ app.post('/api/make-call', async (req, res) => {
           if (result.status === 'fulfilled' && result.value?.success) {
             callSids.push(result.value.callControlId);
             results.successful++;
+          } else if (result.status === 'rejected') {
+            console.error('Promise rejected:', result.reason);
+            results.failed++;
+          } else if (result.value === null) {
+            // Skip null results (empty phone numbers)
+            continue;
           } else {
             results.failed++;
           }
@@ -230,10 +259,10 @@ app.post('/api/make-call', async (req, res) => {
         // Clear promises array for next batch
         callPromises.length = 0;
         
-        // Small delay between batches to prevent overwhelming the API
-        if (i < phoneNumbers.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 200));
-        }
+                 // Increased delay between batches to prevent channel capacity issues
+         if (i < phoneNumbers.length - 1) {
+           await new Promise(resolve => setTimeout(resolve, 1000)); // Increased from 200ms to 1000ms
+         }
       }
     }
 
@@ -247,6 +276,12 @@ app.post('/api/make-call', async (req, res) => {
         if (result.status === 'fulfilled' && result.value?.success) {
           callSids.push(result.value.callControlId);
           results.successful++;
+        } else if (result.status === 'rejected') {
+          console.error('Promise rejected:', result.reason);
+          results.failed++;
+        } else if (result.value === null) {
+          // Skip null results (empty phone numbers)
+          continue;
         } else {
           results.failed++;
         }
@@ -267,11 +302,15 @@ app.post('/api/make-call', async (req, res) => {
         channelLimitHits: results.channelLimitHits,
         batchResults: results,
         errors: results.errors.length > 0 ? results.errors.slice(0, 5) : [], // Include first 5 errors for debugging
-        recommendations: results.channelLimitHits >= 3 ? [
-          "Consider upgrading your Telnyx account for higher channel limits",
-          "Use smaller batch sizes for better success rates",
-          "Consider spreading campaigns over longer time periods"
-        ] : []
+                 recommendations: results.channelLimitHits >= 2 ? [
+           "⚠️ Channel capacity reached multiple times - consider:",
+           "• Upgrading your Telnyx account for higher channel limits",
+           "• Using smaller batch sizes (current: 8 calls per batch)",
+           "• Spreading campaigns over longer time periods",
+           "• Current wait times: 30s-120s between retries"
+         ] : results.channelLimitHits >= 1 ? [
+           "Channel capacity reached - system is automatically adjusting delays"
+         ] : []
       }
     });
 
@@ -336,6 +375,43 @@ app.get('/api/call-counts', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error retrieving call counts',
+      error: error.message
+    });
+  }
+});
+
+// API endpoint to get channel capacity status
+app.get('/api/channel-status', async (req, res) => {
+  try {
+    const activeCalls = await firebaseService.getActiveCalls();
+    const pendingCalls = activeCalls.filter(call => call.status === 'pending').length;
+    const ringingCalls = activeCalls.filter(call => call.status === 'ringing').length;
+    const totalActive = pendingCalls + ringingCalls;
+    
+    res.json({
+      success: true,
+      data: {
+        totalActiveCalls: totalActive,
+        pendingCalls: pendingCalls,
+        ringingCalls: ringingCalls,
+        channelCapacity: {
+          current: totalActive,
+          limit: 10,
+          utilization: Math.round((totalActive / 10) * 100),
+          status: totalActive >= 8 ? 'high' : totalActive >= 5 ? 'medium' : 'low'
+        },
+        recommendations: totalActive >= 8 ? [
+          "High channel utilization detected",
+          "Consider reducing batch size or increasing delays"
+        ] : []
+      }
+    });
+
+  } catch (error) {
+    console.error('Error getting channel status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error retrieving channel status',
       error: error.message
     });
   }
