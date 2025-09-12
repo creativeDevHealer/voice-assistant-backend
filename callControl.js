@@ -5,8 +5,34 @@ const axios = require('axios');
 // Use Firebase for persistent storage
 const firebaseService = require('./firebaseService');
 
+// Telnyx SMS configuration
+const telnyx = require('telnyx')(process.env.TELNYX_API_KEY);
+
 // Minimum duration (in seconds) for answered calls before hangup
 const MIN_ANSWERED_DURATION_SECS = parseInt(process.env.MIN_ANSWERED_DURATION_SECS || '6', 10);
+
+// SMS sending function
+const sendSMS = async (destinationNumber, message) => {
+  try {
+    const smsRequest = {
+      messaging_profile_id: process.env.TELNYX_MESSAGING_ID,
+      to: destinationNumber,
+      from: process.env.TELNYX_PHONE_NUMBER || '+18633049991',
+      text: message,
+      type: 'SMS'
+    };
+
+    const { data: smsResponse } = await telnyx.messages.create(smsRequest);
+    console.log(`SMS sent successfully to ${destinationNumber}:`, {
+      id: smsResponse.id,
+      cost: smsResponse.cost?.amount
+    });
+    return { success: true, messageId: smsResponse.id };
+  } catch (error) {
+    console.error(`Error sending SMS to ${destinationNumber}:`, error?.response?.data || error.message);
+    return { success: false, error: error?.response?.data || error.message };
+  }
+};
 
 
 const webhookController = async (req, res) => {
@@ -72,28 +98,86 @@ const webhookController = async (req, res) => {
           console.warn(`⚠️ Short duration call detected: ${callDuration}s for ${callControlId} (${hangupCause})`);
         }
         
-        if (hangupCause === 'NO_ANSWER') {
+        // Define hangup causes that should trigger SMS
+        const smsTriggerCauses = ['not_found', 'user_busy', 'canceled', 'normal_clearing', 'timeout'];
+        
+        if (hangupCause === 'not_found') {
           status = 'no-answer';
-        } else if (hangupCause === 'BUSY') {
+        } else if (hangupCause === 'user_busy') {
           status = 'busy';
-        } else if (hangupCause === 'CANCEL') {
+        } else if (hangupCause === 'canceled') {
           status = 'canceled';
-        } else if (hangupCause === 'REJECTED') {
+        } else if (hangupCause === 'normal_clearing') {
           status = 'rejected';
-        } else if (hangupCause === 'FAILED') {
+        } else if (hangupCause === 'timeout') {
           status = 'failed';
         } else if (callDuration < 2) {
           // Very short calls (< 2s) are likely invalid numbers or immediate failures
-          status = 'failed';
           console.warn(`⚠️ Very short call (${callDuration}s) marked as failed: ${callControlId}`);
         }
         
-        await firebaseService.updateCallStatus(callControlId, status, {
-          hangupCause: hangupCause,
-          duration: callDuration,
-          endTime: new Date(),
-          isShortDuration: callDuration < MIN_ANSWERED_DURATION_SECS
-        });
+        // Send SMS for specific hangup causes
+        if (smsTriggerCauses.includes(hangupCause)) {
+          try {
+            const callData = await firebaseService.getCallData(callControlId);
+            if (callData && callData.phoneNumber) {
+              const vmCallData = await firebaseService.getCallData(callControlId);
+              const smsResult = await sendSMS(callData.phoneNumber, vmCallData.script);
+              
+              if (smsResult.success) {
+                console.log(`📱 SMS sent to ${callData.phoneNumber} for hangup cause: ${hangupCause}`);
+                // SMS success -> update status to "completed"
+                await firebaseService.updateCallStatus(callControlId, 'completed', {
+                  hangupCause: hangupCause,
+                  duration: callDuration,
+                  endTime: new Date(),
+                  isShortDuration: callDuration < MIN_ANSWERED_DURATION_SECS,
+                  smsSent: true,
+                  smsMessageId: smsResult.messageId
+                });
+              } else {
+                console.error(`❌ Failed to send SMS to ${callData.phoneNumber}:`, smsResult.error);
+                // SMS failed -> update status to "failed"
+                await firebaseService.updateCallStatus(callControlId, 'failed', {
+                  hangupCause: hangupCause,
+                  duration: callDuration,
+                  endTime: new Date(),
+                  isShortDuration: callDuration < MIN_ANSWERED_DURATION_SECS,
+                  smsSent: false,
+                  smsError: smsResult.error
+                });
+              }
+            } else {
+              console.warn(`⚠️ No phone number found for call ${callControlId}, cannot send SMS`);
+              // No phone number -> update status to "failed"
+              await firebaseService.updateCallStatus(callControlId, 'failed', {
+                hangupCause: hangupCause,
+                duration: callDuration,
+                endTime: new Date(),
+                isShortDuration: callDuration < MIN_ANSWERED_DURATION_SECS
+              });
+            }
+          } catch (smsError) {
+            console.error(`❌ Error processing SMS for call ${callControlId}:`, smsError);
+            // SMS error -> update status to "failed"
+            await firebaseService.updateCallStatus(callControlId, 'failed', {
+              hangupCause: hangupCause,
+              duration: callDuration,
+              endTime: new Date(),
+              isShortDuration: callDuration < MIN_ANSWERED_DURATION_SECS,
+              smsSent: false,
+              smsError: smsError.message
+            });
+          }
+        } else {
+          // Update status without SMS for other hangup causes
+          await firebaseService.updateCallStatus(callControlId, status, {
+            hangupCause: hangupCause,
+            duration: callDuration,
+            endTime: new Date(),
+            isShortDuration: callDuration < MIN_ANSWERED_DURATION_SECS
+          });
+        }
         break;
 
       case 'call.machine.detection.ended':
