@@ -51,7 +51,30 @@ const webhookController = async (req, res) => {
     // Update call status in Firebase based on event type
     switch (type) {
       case 'call.initiated':
-        await firebaseService.updateCallStatus(callControlId, 'initiated');
+        const direction = event?.data?.payload?.direction;
+        const fromNumber = event?.data?.payload?.from;
+        const toNumber = event?.data?.payload?.to; // Your Telnyx number
+        
+        if (direction === 'inbound') {
+          console.log(`Inbound call from ${fromNumber} to ${toNumber}`);
+          
+          // Redirect to your real phone number
+          try {
+            await axios.post(
+              `https://api.telnyx.com/v2/calls/${encodeURIComponent(callControlId)}/actions/redirect`,
+              {
+                to: '+15015855834' // Replace with your real phone number
+              },
+              { headers: { Authorization: `Bearer ${process.env.TELNYX_API_KEY}` } }
+            );
+            console.log(`✅ Redirected inbound call from ${fromNumber} to your real phone`);
+          } catch (error) {
+            console.error('❌ Error redirecting inbound call:', error);
+          }
+        } else {
+          // Handle outbound calls normally
+          await firebaseService.updateCallStatus(callControlId, 'initiated');
+        }
         break;
 
       case 'call.ringing':
@@ -123,6 +146,7 @@ const webhookController = async (req, res) => {
             if (callData && callData.phoneNumber) {
               const vmCallData = await firebaseService.getCallData(callControlId);
               const smsResult = await sendSMS(callData.phoneNumber, vmCallData.script);
+              console.log(vmCallData.script);
               
               if (smsResult.success) {
                 console.log(`📱 SMS sent to ${callData.phoneNumber} for hangup cause: ${hangupCause}`);
@@ -138,7 +162,7 @@ const webhookController = async (req, res) => {
               } else {
                 console.error(`❌ Failed to send SMS to ${callData.phoneNumber}:`, smsResult.error);
                 // SMS failed -> update status to "failed"
-                await firebaseService.updateCallStatus(callControlId, 'failed', {
+                await firebaseService.updateCallStatus(callControlId, 'completed', {
                   hangupCause: hangupCause,
                   duration: callDuration,
                   endTime: new Date(),
@@ -149,8 +173,8 @@ const webhookController = async (req, res) => {
               }
             } else {
               console.warn(`⚠️ No phone number found for call ${callControlId}, cannot send SMS`);
-              // No phone number -> update status to "failed"
-              await firebaseService.updateCallStatus(callControlId, 'failed', {
+              // No phone number -> update status to "completed"
+              await firebaseService.updateCallStatus(callControlId, 'completed', {
                 hangupCause: hangupCause,
                 duration: callDuration,
                 endTime: new Date(),
@@ -160,7 +184,7 @@ const webhookController = async (req, res) => {
           } catch (smsError) {
             console.error(`❌ Error processing SMS for call ${callControlId}:`, smsError);
             // SMS error -> update status to "failed"
-            await firebaseService.updateCallStatus(callControlId, 'failed', {
+            await firebaseService.updateCallStatus(callControlId, 'completed', {
               hangupCause: hangupCause,
               duration: callDuration,
               endTime: new Date(),
