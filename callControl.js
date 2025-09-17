@@ -54,16 +54,17 @@ const webhookController = async (req, res) => {
         const direction = event?.data?.payload?.direction;
         const fromNumber = event?.data?.payload?.from;
         const toNumber = event?.data?.payload?.to; // Your Telnyx number
-        
-        if (direction === 'inbound') {
+        console.log(direction, fromNumber, toNumber);
+        if (direction === 'incoming') {
           console.log(`Inbound call from ${fromNumber} to ${toNumber}`);
           
           // Redirect to your real phone number
           try {
             await axios.post(
-              `https://api.telnyx.com/v2/calls/${encodeURIComponent(callControlId)}/actions/redirect`,
+              `https://api.telnyx.com/v2/calls/${encodeURIComponent(callControlId)}/actions/transfer`,
               {
-                to: '+15015855834' // Replace with your real phone number
+                to: '+15015855834', // Replace with your real phone number
+                from: fromNumber
               },
               { headers: { Authorization: `Bearer ${process.env.TELNYX_API_KEY}` } }
             );
@@ -124,20 +125,6 @@ const webhookController = async (req, res) => {
         // Define hangup causes that should trigger SMS
         const smsTriggerCauses = ['not_found', 'user_busy', 'canceled', 'normal_clearing', 'timeout'];
         
-        if (hangupCause === 'not_found') {
-          status = 'no-answer';
-        } else if (hangupCause === 'user_busy') {
-          status = 'busy';
-        } else if (hangupCause === 'canceled') {
-          status = 'canceled';
-        } else if (hangupCause === 'normal_clearing') {
-          status = 'rejected';
-        } else if (hangupCause === 'timeout') {
-          status = 'failed';
-        } else if (callDuration < 2) {
-          // Very short calls (< 2s) are likely invalid numbers or immediate failures
-          console.warn(`⚠️ Very short call (${callDuration}s) marked as failed: ${callControlId}`);
-        }
         
         // Send SMS for specific hangup causes
         if (smsTriggerCauses.includes(hangupCause)) {
