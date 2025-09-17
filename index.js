@@ -19,6 +19,7 @@ app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH');
   res.header('Access-Control-Allow-Headers', '*');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, ngrok-skip-browser-warning');
   res.header('Access-Control-Max-Age', '86400');
   
   if (req.method === 'OPTIONS') {
