@@ -558,5 +558,5 @@ app.post('/sms', async (req, res) => {
   }
 });
 
-app.listen(process.env.TELNYX_APP_PORT);
-console.log(`Server listening on port ${process.env.TELNYX_APP_PORT}`);
+app.listen(5000, '0.0.0.0');
+console.log(`Server listening on port 5000`);
