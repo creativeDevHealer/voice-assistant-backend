@@ -353,16 +353,16 @@ app.post('/api/cancel-all-calls', async (req, res) => {
           // Update status in Firebase
           await firebaseService.updateCallStatus(call.callControlId, 'canceled');
           canceledCount++;
-          console.log(`✅ Canceled broadcast call ${call.callControlId}`);
+          // console.log(`✅ Canceled broadcast call ${call.callControlId}`);
         } catch (error) {
-          console.error(`❌ Error canceling broadcast call ${call.callControlId}:`, error);
+          // console.error(`❌ Error canceling broadcast call ${call.callControlId}:`, error);
           // Still update status in Firebase even if API call fails
-          try {
-            await firebaseService.updateCallStatus(call.callControlId, 'canceled');
-            canceledCount++;
-          } catch (updateError) {
-            console.error(`Error updating status for ${call.callControlId}:`, updateError);
-          }
+          // try {
+          //   await firebaseService.updateCallStatus(call.callControlId, 'canceled');
+          //   canceledCount++;
+          // } catch (updateError) {
+          //   console.error(`Error updating status for ${call.callControlId}:`, updateError);
+          // }
         }
       }
       
