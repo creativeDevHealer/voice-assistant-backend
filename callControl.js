@@ -41,6 +41,8 @@ const webhookController = async (req, res) => {
     const type = event?.data?.event_type;
     const callControlId = event?.data?.payload?.call_control_id;
 
+    console.log(req.body);
+
     // console.log(`Webhook received: ${type} for call ${callControlId}`);
 
     if (!callControlId) {
