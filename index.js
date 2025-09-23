@@ -40,8 +40,9 @@ app.use(callControlPath, callControl);
 // API endpoint for batch calls with Firebase storage
 app.post('/api/make-call', async (req, res) => {
   try {
+    const channelLimitHits = 0;
     const { phonenumber, contact_id, contact_name, content } = req.body;
-    
+
     if (!phonenumber || !content) {
       return res.status(400).json({ 
         success: false, 
@@ -63,11 +64,8 @@ app.post('/api/make-call', async (req, res) => {
       });
     }
 
-    const callSids = [];
     const broadcastId = `broadcast_${Date.now()}`;
     
-    console.log(`Starting broadcast ${broadcastId} for ${phoneNumbers.length} numbers`);
-
     // Store broadcast session
     try {
       await firebaseService.storeBroadcastSession(broadcastId, {
@@ -80,243 +78,118 @@ app.post('/api/make-call', async (req, res) => {
       // Continue with broadcast even if Firebase storage fails
     }
 
-    const results = {
-      successful: 0,
-      failed: 0,
-      errors: [],
-      channelLimitHits: 0
-    };
+    try {
+      const createCallRequest = {
+        connection_id: process.env.TELNYX_CONNECTION_ID,
+        to: phoneNumbers, // Changed to array format to match Telnyx API
+        from: process.env.TELNYX_PHONE_NUMBER || '+18633049991',
+        answering_machine_detection: "detect_words",
+        webhook_url: webhookUrl
+      };
 
-    // Process calls in parallel with controlled concurrency
-    const MAX_CONCURRENT_CALLS = 8; // Reduced from 10 to avoid channel capacity issues
-    const callPromises = [];
-    
-    // Create call creation function
-    const createCall = async (phone, contactId, contactName, script, index) => {
-      if (!phone) {
-        console.log(`Skipping empty phone number at index ${index}`);
-        results.failed++;
-        return null;
-      }
+      console.log(createCallRequest);
 
-      console.log(`🔄 Initiating call ${index + 1}/${phoneNumbers.length} for ${phone}`);
 
-      try {
-        const createCallRequest = {
-          connection_id: process.env.TELNYX_CONNECTION_ID,
-          to: phone,
-          from: process.env.TELNYX_PHONE_NUMBER || '+18633049991',
-          answering_machine_detection: "detect_words",
-          webhook_url: webhookUrl
-        };
-
-        const { data: call } = await telnyx.calls.create(createCallRequest);
-        const callControlId = call.call_control_id;
-        
-        // Store call data in storage
+      const { data: call } = await telnyx.calls.create(createCallRequest);
+      const callSessionId = call.call_session_id;
+      // Store call data in storage
+      let index = 0;
+      for (const call_leg of call.call_legs) {
+        const callControlId = call_leg.call_control_id;
         try {
           await firebaseService.storeCallData(callControlId, {
             callSid: callControlId,
-            callLegId: call.call_leg_id,
-            callSessionId: call.call_session_id,
+            callLegId: call_leg.call_leg_id,
+            callSessionId: callSessionId,
             broadcastId: broadcastId,
-            contactId: contactId,
-            contactName: contactName,
-            phoneNumber: phone,
-            script: script,
+            contactId: contactIds[index],
+            contactName: contactNames[index],
+            phoneNumber: phoneNumbers[index],
+            script: contents[index],
             status: 'pending'
           });
         } catch (storageError) {
           console.error('Error storing call data:', storageError);
-          // Continue with call even if storage fails
         }
+        index++;
+      }
+      console.log(call);
+      
+      res.status(201).json({
+        success: true,
+        data: {
+          broadcastId: broadcastId,
+          callSids: call.call_legs.map(call_leg => call_leg.call_control_id),
+          channelLimitHits: 0,
+        }
+      });
 
-        console.log(`✅ Created call for ${phone}, call_control_id: ${callControlId}`);
-        return { success: true, callControlId, phone, contactId, contactName, script };
+      return { success: true, phoneNumbers, contactIds, contactNames, contents };
 
-      } catch (error) {
-        const errorMsg = error.response?.data?.errors?.[0]?.detail || error.message;
-        const isChannelLimitError = errorMsg.includes('channel limit exceeded') || error.response?.status === 403;
+    } catch (error) {
+      const errorMsg = error.response?.data?.errors?.[0]?.detail || error.message;
+      const isChannelLimitError = errorMsg.includes('channel limit exceeded') || error.response?.status === 403;
+      
+      if (isChannelLimitError) {
+        channelLimitHits++;
         
-        if (isChannelLimitError) {
-          results.channelLimitHits++;
-          
-                     // Dynamic wait time based on how many times we've hit the limit
-           const waitTime = Math.min(30000 + (results.channelLimitHits * 10000), 120000); // Increased wait times
-           console.warn(`⚠️ Channel capacity reached for ${phone} (hit #${results.channelLimitHits}), waiting ${waitTime/1000} seconds and retrying...`);
-          
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-          
-          try {
-            const retryRequest = {
-              connection_id: process.env.TELNYX_CONNECTION_ID,
-              to: phone,
-              from: process.env.TELNYX_PHONE_NUMBER || '+18633049991',
-              answering_machine_detection: "detect_words",
-              webhook_url: webhookUrl
-            };
-
-            const { data: retryCall } = await telnyx.calls.create(retryRequest);
-            const retryCallControlId = retryCall.call_control_id;
-            
+         const waitTime = Math.min(30000 + (channelLimitHits * 10000), 120000); // Increased wait times
+         console.warn(`⚠️ Channel capacity reached for ${phoneNumbers} (hit #${channelLimitHits}), waiting ${waitTime/1000} seconds and retrying...`);
+        
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        
+        try {
+          const retryRequest = {
+            connection_id: process.env.TELNYX_CONNECTION_ID,
+            to: phoneNumbers,
+            from: process.env.TELNYX_PHONE_NUMBER || '+18633049991',
+            answering_machine_detection: "detect_words",
+            webhook_url: webhookUrl
+          };
+          const { data: retryCall } = await telnyx.calls.create(retryRequest);
+          const callSessionId = retryCall.call_session_id;
+          let index = 0;
+          for (const call_leg of retryCall.call_legs) {
+            const callControlId = call_leg.call_control_id;
             try {
-              await firebaseService.storeCallData(retryCallControlId, {
-                callSid: retryCallControlId,
-                callLegId: retryCall.call_leg_id,
-                callSessionId: retryCall.call_session_id,
+              await firebaseService.storeCallData(callControlId, {
+                callSid: callControlId,
+                callLegId: call_leg.call_leg_id,
+                callSessionId: callSessionId,
                 broadcastId: broadcastId,
-                contactId: contactId,
-                contactName: contactName,
-                phoneNumber: phone,
-                script: script,
+                contactId: contactIds[index],
+                contactName: contactNames[index],
+                phoneNumber: phoneNumbers[index],
+                script: contents[index],
                 status: 'pending'
               });
             } catch (storageError) {
-              console.error('Error storing retry call data:', storageError);
-              // Continue with call even if storage fails
+              console.error('Error storing call data:', storageError);
             }
-
-            console.log(`✅ Retry successful for ${phone}, call_control_id: ${retryCallControlId}`);
-            return { success: true, callControlId: retryCallControlId, phone, contactId, contactName, script };
-            
-          } catch (retryError) {
-            const retryErrorMsg = retryError.response?.data?.errors?.[0]?.detail || retryError.message;
-            results.errors.push({ phone, error: `Retry failed: ${retryErrorMsg}` });
-            
-            console.error(`❌ Retry failed for ${phone}:`, retryErrorMsg);
-            
-            // Store failed call attempt
-            try {
-              await firebaseService.storeCallData(`failed_${Date.now()}_${index}`, {
-                broadcastId: broadcastId,
-                contactId: contactId,
-                contactName: contactName,
-                phoneNumber: phone,
-                script: script,
-                status: 'failed',
-                error: retryErrorMsg
-              });
-            } catch (storageError) {
-              console.error('Error storing failed call data:', storageError);
-            }
-            
-            return { success: false, phone, error: retryErrorMsg };
+            index++;
           }
-        } else {
-          // Non-channel-limit errors (invalid numbers, etc.)
-          results.errors.push({ phone, error: errorMsg });
-          
-          console.error(`❌ Error creating call for ${phone}:`, errorMsg);
-          
-          // Store failed call attempt
-          try {
-            await firebaseService.storeCallData(`failed_${Date.now()}_${index}`, {
+          console.log(`✅ Retry successful for ${phoneNumbers}`);
+          res.status(201).json({
+            success: true,
+            data: {
               broadcastId: broadcastId,
-              contactId: contactId,
-              contactName: contactName,
-              phoneNumber: phone,
-              script: script,
-              status: 'failed',
-              error: errorMsg
-            });
-          } catch (storageError) {
-            console.error('Error storing failed call data:', storageError);
-          }
+              callSids: retryCall.call_legs.map(call_leg => call_leg.call_control_id),
+              channelLimitHits: channelLimitHits,
+            }
+          });
+          return { success: true, phoneNumbers, contactIds, contactNames, contents };
           
-          return { success: false, phone, error: errorMsg };
+        } catch (retryError) {
+          const retryErrorMsg = retryError.response?.data?.errors?.[0]?.detail || retryError.message;
+          errors.push({ phoneNumbers, error: `Retry failed: ${retryErrorMsg}` });
+          console.error(`❌ Retry failed for ${phoneNumbers}:`, retryErrorMsg);
+          return { success: false, phoneNumbers, error: retryErrorMsg };
         }
-      }
-    };
-
-    // Process calls in parallel with controlled concurrency
-    for (let i = 0; i < phoneNumbers.length; i++) {
-      const phone = phoneNumbers[i]?.trim();
-      const contactId = contactIds[i]?.trim() || `contact_${i}`;
-      const contactName = contactNames[i]?.trim() || `Contact ${i + 1}`;
-      const script = contents[i] || contents[0];
-
-      // Add call to promises array
-      callPromises.push(createCall(phone, contactId, contactName, script, i));
-      
-      // Control concurrency - wait if we have too many active calls
-      if (callPromises.length >= MAX_CONCURRENT_CALLS) {
-        console.log(`📞 Processing batch of ${MAX_CONCURRENT_CALLS} parallel calls...`);
-        const batchResults = await Promise.allSettled(callPromises);
-        
-        // Process results
-        for (const result of batchResults) {
-          if (result.status === 'fulfilled' && result.value?.success) {
-            callSids.push(result.value.callControlId);
-            results.successful++;
-          } else if (result.status === 'rejected') {
-            console.error('Promise rejected:', result.reason);
-            results.failed++;
-          } else if (result.value === null) {
-            // Skip null results (empty phone numbers)
-            continue;
-          } else {
-            results.failed++;
-          }
-        }
-        
-        // Clear promises array for next batch
-        callPromises.length = 0;
-        
-                 // Increased delay between batches to prevent channel capacity issues
-         if (i < phoneNumbers.length - 1) {
-           await new Promise(resolve => setTimeout(resolve, 1000)); // Increased from 200ms to 1000ms
-         }
+      } else {
+        console.error(`❌ Error creating call for ${phoneNumbers}:`, errorMsg);        
+        return { success: false, phoneNumbers, error: errorMsg };
       }
     }
-
-    // Process remaining calls
-    if (callPromises.length > 0) {
-      console.log(`📞 Processing final batch of ${callPromises.length} parallel calls...`);
-      const batchResults = await Promise.allSettled(callPromises);
-      
-      // Process results
-      for (const result of batchResults) {
-        if (result.status === 'fulfilled' && result.value?.success) {
-          callSids.push(result.value.callControlId);
-          results.successful++;
-        } else if (result.status === 'rejected') {
-          console.error('Promise rejected:', result.reason);
-          results.failed++;
-        } else if (result.value === null) {
-          // Skip null results (empty phone numbers)
-          continue;
-        } else {
-          results.failed++;
-        }
-      }
-    }
-
-    console.log(`📊 Batch complete: ${results.successful} successful, ${results.failed} failed out of ${phoneNumbers.length} total`);
-    console.log(`🔄 Channel limit hits: ${results.channelLimitHits}`);
-
-    res.status(201).json({
-      success: true,
-      data: {
-        broadcastId: broadcastId,
-        callSids: callSids,
-        totalCalls: phoneNumbers.length,
-        successfulCalls: results.successful,
-        failedCalls: results.failed,
-        channelLimitHits: results.channelLimitHits,
-        batchResults: results,
-        errors: results.errors.length > 0 ? results.errors.slice(0, 5) : [], // Include first 5 errors for debugging
-                 recommendations: results.channelLimitHits >= 2 ? [
-           "⚠️ Channel capacity reached multiple times - consider:",
-           "• Upgrading your Telnyx account for higher channel limits",
-           "• Using smaller batch sizes (current: 8 calls per batch)",
-           "• Spreading campaigns over longer time periods",
-           "• Current wait times: 30s-120s between retries"
-         ] : results.channelLimitHits >= 1 ? [
-           "Channel capacity reached - system is automatically adjusting delays"
-         ] : []
-      }
-    });
-
   } catch (error) {
     console.error('Error in /api/make-call:', error);
     res.status(500).json({ 
