@@ -42,7 +42,7 @@ const webhookController = async (req, res) => {
     const callControlId = event?.data?.payload?.call_control_id;
 
     if(event.data.event_type.includes('call')){
-      console.log(event.data.payload.call_control_id);
+      console.log(event.data.payload.call_control_id, event.data.event_type);
     }
 
     if (!callControlId) {

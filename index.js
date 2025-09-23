@@ -92,9 +92,25 @@ app.post('/api/make-call', async (req, res) => {
 
       const { data: call } = await telnyx.calls.create(createCallRequest);
       const callSessionId = call.call_session_id;
-      // Store call data in storage
+      
+      // Debug logging to identify the mismatch
+      console.log(`📞 Telnyx Response Debug:`);
+      console.log(`  - Phone numbers sent: ${phoneNumbers.length} (${phoneNumbers.join(', ')})`);
+      console.log(`  - Call legs received: ${call.call_legs.length}`);
+      console.log(`  - Call legs:`, call.call_legs.map(leg => ({ id: leg.call_leg_id, control_id: leg.call_control_id })));
+      
+      // Validate that we have the expected number of call legs
+      if (call.call_legs.length !== phoneNumbers.length) {
+        console.warn(`⚠️ MISMATCH: Expected ${phoneNumbers.length} call legs but received ${call.call_legs.length}`);
+        console.warn(`⚠️ This could indicate Telnyx API issues or retry behavior`);
+      }
+      
+      // Store call data in storage - only use the first N call legs where N = phoneNumbers.length
+      const validCallLegs = call.call_legs.slice(0, phoneNumbers.length);
+      console.log(`📋 Using ${validCallLegs.length} call legs for ${phoneNumbers.length} phone numbers`);
+      
       let index = 0;
-      for (const call_leg of call.call_legs) {
+      for (const call_leg of validCallLegs) {
         const callControlId = call_leg.call_control_id;
         try {
           await firebaseService.storeCallData(callControlId, {
@@ -108,19 +124,23 @@ app.post('/api/make-call', async (req, res) => {
             script: contents[index],
             status: 'pending'
           });
-          console.log(`✅ Call data stored for ${callControlId}`);
+          console.log(`✅ Call data stored for ${callControlId} (phone: ${phoneNumbers[index]})`);
         } catch (storageError) {
           console.error('Error storing call data:', storageError);
         }
         index++;
       }
-      // console.log(call);
+      
+      // Return only the callSids that correspond to actual phone numbers
+      const validCallSids = validCallLegs.map(call_leg => call_leg.call_control_id);
+      
+      console.log(`📤 Returning ${validCallSids.length} callSids: [${validCallSids.join(', ')}]`);
       
       res.status(201).json({
         success: true,
         data: {
           broadcastId: broadcastId,
-          callSids: call.call_legs.map(call_leg => call_leg.call_control_id),
+          callSids: validCallSids,
           channelLimitHits: 0,
         }
       });
@@ -149,8 +169,22 @@ app.post('/api/make-call', async (req, res) => {
           };
           const { data: retryCall } = await telnyx.calls.create(retryRequest);
           const callSessionId = retryCall.call_session_id;
+          
+          // Debug logging for retry
+          console.log(`🔄 Retry Telnyx Response Debug:`);
+          console.log(`  - Phone numbers sent: ${phoneNumbers.length} (${phoneNumbers.join(', ')})`);
+          console.log(`  - Call legs received: ${retryCall.call_legs.length}`);
+          
+          // Validate retry response
+          if (retryCall.call_legs.length !== phoneNumbers.length) {
+            console.warn(`⚠️ RETRY MISMATCH: Expected ${phoneNumbers.length} call legs but received ${retryCall.call_legs.length}`);
+          }
+          
+          // Use only the valid call legs
+          const validRetryCallLegs = retryCall.call_legs.slice(0, phoneNumbers.length);
+          
           let index = 0;
-          for (const call_leg of retryCall.call_legs) {
+          for (const call_leg of validRetryCallLegs) {
             const callControlId = call_leg.call_control_id;
             try {
               await firebaseService.storeCallData(callControlId, {
@@ -169,12 +203,15 @@ app.post('/api/make-call', async (req, res) => {
             }
             index++;
           }
-          console.log(`✅ Retry successful for ${phoneNumbers}`);
+          
+          const validRetryCallSids = validRetryCallLegs.map(call_leg => call_leg.call_control_id);
+          console.log(`✅ Retry successful for ${phoneNumbers} - returning ${validRetryCallSids.length} callSids`);
+          
           res.status(201).json({
             success: true,
             data: {
               broadcastId: broadcastId,
-              callSids: retryCall.call_legs.map(call_leg => call_leg.call_control_id),
+              callSids: validRetryCallSids,
               channelLimitHits: channelLimitHits,
             }
           });
