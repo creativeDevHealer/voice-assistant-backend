@@ -119,7 +119,7 @@ const webhookController = async (req, res) => {
         
         // Check for short duration calls that might trigger Telnyx warnings
         if (callDuration < MIN_ANSWERED_DURATION_SECS) {
-          console.warn(`⚠️ Short duration call detected: ${callDuration}s for ${callControlId} (${hangupCause})`);
+          // console.warn(`⚠️ Short duration call detected: ${callDuration}s for ${callControlId} (${hangupCause})`);
         }
         
         // Define hangup causes that should trigger SMS

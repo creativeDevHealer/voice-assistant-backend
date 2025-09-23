@@ -52,7 +52,7 @@ class FirebaseService {
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
-      console.log(`Call data stored for ${callControlId}`);
+      // console.log(`Call data stored for ${callControlId}`);
       return true;
     } catch (error) {
       console.error('Error storing call data:', error);
