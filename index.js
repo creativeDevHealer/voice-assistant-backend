@@ -219,7 +219,6 @@ app.post('/api/make-call', async (req, res) => {
           
         } catch (retryError) {
           const retryErrorMsg = retryError.response?.data?.errors?.[0]?.detail || retryError.message;
-          errors.push({ phoneNumbers, error: `Retry failed: ${retryErrorMsg}` });
           console.error(`❌ Retry failed for ${phoneNumbers}:`, retryErrorMsg);
           return { success: false, phoneNumbers, error: retryErrorMsg };
         }
