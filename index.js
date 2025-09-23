@@ -40,7 +40,7 @@ app.use(callControlPath, callControl);
 // API endpoint for batch calls with Firebase storage
 app.post('/api/make-call', async (req, res) => {
   try {
-    const channelLimitHits = 0;
+    let channelLimitHits = 0;
     const { phonenumber, contact_id, contact_name, content } = req.body;
 
     if (!phonenumber || !content) {
