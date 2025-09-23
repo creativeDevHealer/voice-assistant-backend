@@ -41,9 +41,9 @@ const webhookController = async (req, res) => {
     const type = event?.data?.event_type;
     const callControlId = event?.data?.payload?.call_control_id;
 
-    console.log(req.body);
-
-    // console.log(`Webhook received: ${type} for call ${callControlId}`);
+    if(event.event_type.includes('call')){
+      console.log(event.payload.call_control_id);
+    }
 
     if (!callControlId) {
       // console.log('No call_control_id found in webhook');
@@ -80,12 +80,8 @@ const webhookController = async (req, res) => {
         }
         break;
 
-      case 'call.ringing':
-        await firebaseService.updateCallStatus(callControlId, 'ringing');
-        break;
-
       case 'call.answered':
-        await firebaseService.updateCallStatus(callControlId, 'answered', {
+        await firebaseService.updateCallStatus(callControlId, 'completed', {
           answeredAt: new Date()
         });
         
@@ -193,107 +189,8 @@ const webhookController = async (req, res) => {
         }
         break;
 
-      case 'call.machine.detection.ended':
-        const machineDetection = event?.data?.payload?.machine_detection_result;
-        if (machineDetection === 'human') {
-          await firebaseService.updateCallStatus(callControlId, 'answered', {
-            answeredAt: new Date()
-          });
-        } else if (machineDetection === 'machine') {
-          await firebaseService.updateCallStatus(callControlId, 'voicemail');
-          
-          // Still speak the script for voicemail
-          const vmCallData = await firebaseService.getCallData(callControlId);
-          if (vmCallData && vmCallData.script) {
-            try {
-              await axios.post(
-                `https://api.telnyx.com/v2/calls/${encodeURIComponent(callControlId)}/actions/speak`,
-                {
-                  payload: vmCallData.script,
-                  payload_type: 'text',
-                  service_level: 'basic',
-                  voice: 'AWS.Polly.Danielle-Neural',
-                  language: 'en-US'
-                },
-                { headers: { Authorization: `Bearer ${process.env.TELNYX_API_KEY}` } }
-              );
-              // console.log(`Speaking script to voicemail for call ${callControlId}`);
-            } catch (speakError) {
-              console.error('Error speaking to voicemail:', speakError);
-            }
-          }
-        }
-        break;
-
       case 'call.speak.ended':
-        // Mark as completed when speaking is done
         await firebaseService.updateCallStatus(callControlId, 'completed');
-
-        // Fetch call to compute remaining time to meet minimum answered duration
-        try {
-          const callData = await firebaseService.getCallData(callControlId);
-          const answeredAtRaw = callData?.answeredAt;
-          let answeredAtMs = null;
-          if (answeredAtRaw) {
-            if (typeof answeredAtRaw === 'string' || answeredAtRaw instanceof Date) {
-              answeredAtMs = new Date(answeredAtRaw).getTime();
-            } else if (typeof answeredAtRaw === 'object' && typeof answeredAtRaw.toDate === 'function') {
-              answeredAtMs = answeredAtRaw.toDate().getTime();
-            }
-          }
-          const nowMs = Date.now();
-          const minEndMs = (answeredAtMs || nowMs) + (MIN_ANSWERED_DURATION_SECS * 1000);
-          const waitMs = Math.max(0, minEndMs - nowMs);
-
-          setTimeout(async () => {
-            try {
-              await axios.post(
-                `https://api.telnyx.com/v2/calls/${encodeURIComponent(callControlId)}/actions/hangup`,
-                {},
-                { headers: { Authorization: `Bearer ${process.env.TELNYX_API_KEY}` } }
-              );
-              // console.log(`Successfully hung up call ${callControlId} after speaking (waited ${waitMs}ms to satisfy min duration)`);
-            } catch (hangupError) {
-              if (hangupError.response?.status === 422) {
-                // console.log(`Call ${callControlId} already ended or cannot be hung up (422) - this is normal`);
-              } else if (hangupError.response?.status === 404) {
-                // console.log(`Call ${callControlId} not found (404) - call may have already ended`);
-              } else {
-                console.error(`Error hanging up call ${callControlId}:`, {
-                  status: hangupError.response?.status,
-                  statusText: hangupError.response?.statusText,
-                  data: hangupError.response?.data?.errors || hangupError.response?.data,
-                  message: hangupError.message
-                });
-              }
-            }
-          }, waitMs);
-        } catch (e) {
-          console.error('Error computing minimum answered duration, proceeding with default 1s hangup:', e?.message || e);
-          setTimeout(async () => {
-            try {
-              await axios.post(
-                `https://api.telnyx.com/v2/calls/${encodeURIComponent(callControlId)}/actions/hangup`,
-                {},
-                { headers: { Authorization: `Bearer ${process.env.TELNYX_API_KEY}` } }
-              );
-              // console.log(`Successfully hung up call ${callControlId} after speaking (default wait)`);
-            } catch (hangupError) {
-              if (hangupError.response?.status === 422) {
-                // console.log(`Call ${callControlId} already ended or cannot be hung up (422) - this is normal`);
-              } else if (hangupError.response?.status === 404) {
-                // console.log(`Call ${callControlId} not found (404) - call may have already ended`);
-              } else {
-                console.error(`Error hanging up call ${callControlId}:`, {
-                  status: hangupError.response?.status,
-                  statusText: hangupError.response?.statusText,
-                  data: hangupError.response?.data?.errors || hangupError.response?.data,
-                  message: hangupError.message
-                });
-              }
-            }
-          }, 1000);
-        }
         break;
 
       case 'call.bridged':
@@ -301,7 +198,6 @@ const webhookController = async (req, res) => {
         break;
 
       default:
-        // console.log(`Unhandled webhook type: ${type}`);
         break;
     }
 
