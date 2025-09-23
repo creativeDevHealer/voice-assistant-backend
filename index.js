@@ -87,7 +87,7 @@ app.post('/api/make-call', async (req, res) => {
         webhook_url: webhookUrl
       };
 
-      console.log(createCallRequest);
+      // console.log(createCallRequest);
 
 
       const { data: call } = await telnyx.calls.create(createCallRequest);
@@ -108,12 +108,13 @@ app.post('/api/make-call', async (req, res) => {
             script: contents[index],
             status: 'pending'
           });
+          console.log(`✅ Call data stored for ${callControlId}`);
         } catch (storageError) {
           console.error('Error storing call data:', storageError);
         }
         index++;
       }
-      console.log(call);
+      // console.log(call);
       
       res.status(201).json({
         success: true,

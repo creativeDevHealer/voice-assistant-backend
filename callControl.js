@@ -23,10 +23,10 @@ const sendSMS = async (destinationNumber, message) => {
     };
 
     const { data: smsResponse } = await telnyx.messages.create(smsRequest);
-    console.log(`SMS sent successfully to ${destinationNumber}:`, {
-      id: smsResponse.id,
-      cost: smsResponse.cost?.amount
-    });
+    // console.log(`SMS sent successfully to ${destinationNumber}:`, {
+    //   id: smsResponse.id,
+    //   cost: smsResponse.cost?.amount
+    // });
     return { success: true, messageId: smsResponse.id };
   } catch (error) {
     console.error(`Error sending SMS to ${destinationNumber}:`, error?.response?.data || error.message);
@@ -41,10 +41,10 @@ const webhookController = async (req, res) => {
     const type = event?.data?.event_type;
     const callControlId = event?.data?.payload?.call_control_id;
 
-    console.log(`Webhook received: ${type} for call ${callControlId}`);
+    // console.log(`Webhook received: ${type} for call ${callControlId}`);
 
     if (!callControlId) {
-      console.log('No call_control_id found in webhook');
+      // console.log('No call_control_id found in webhook');
       return res.sendStatus(200);
     }
 
@@ -54,9 +54,9 @@ const webhookController = async (req, res) => {
         const direction = event?.data?.payload?.direction;
         const fromNumber = event?.data?.payload?.from;
         const toNumber = event?.data?.payload?.to; // Your Telnyx number
-        console.log(direction, fromNumber, toNumber);
+        // console.log(direction, fromNumber, toNumber);
         if (direction === 'incoming') {
-          console.log(`Inbound call from ${fromNumber} to ${toNumber}`);
+          // console.log(`Inbound call from ${fromNumber} to ${toNumber}`);
           
           // Redirect to your real phone number
           try {
@@ -104,7 +104,7 @@ const webhookController = async (req, res) => {
               },
               { headers: { Authorization: `Bearer ${process.env.TELNYX_API_KEY}` } }
             );
-            console.log(`Speaking script for call ${callControlId}`);
+            // console.log(`Speaking script for call ${callControlId}`);
           } catch (speakError) {
             console.error('Error speaking script:', speakError);
           }
@@ -133,10 +133,10 @@ const webhookController = async (req, res) => {
             if (callData && callData.phoneNumber) {
               const vmCallData = await firebaseService.getCallData(callControlId);
               const smsResult = await sendSMS(callData.phoneNumber, vmCallData.script);
-              console.log(vmCallData.script);
+              // console.log(vmCallData.script);
               
               if (smsResult.success) {
-                console.log(`📱 SMS sent to ${callData.phoneNumber} for hangup cause: ${hangupCause}`);
+                // console.log(`📱 SMS sent to ${callData.phoneNumber} for hangup cause: ${hangupCause}`);
                 // SMS success -> update status to "completed"
                 await firebaseService.updateCallStatus(callControlId, 'completed', {
                   hangupCause: hangupCause,
@@ -215,7 +215,7 @@ const webhookController = async (req, res) => {
                 },
                 { headers: { Authorization: `Bearer ${process.env.TELNYX_API_KEY}` } }
               );
-              console.log(`Speaking script to voicemail for call ${callControlId}`);
+              // console.log(`Speaking script to voicemail for call ${callControlId}`);
             } catch (speakError) {
               console.error('Error speaking to voicemail:', speakError);
             }
@@ -250,12 +250,12 @@ const webhookController = async (req, res) => {
                 {},
                 { headers: { Authorization: `Bearer ${process.env.TELNYX_API_KEY}` } }
               );
-              console.log(`Successfully hung up call ${callControlId} after speaking (waited ${waitMs}ms to satisfy min duration)`);
+              // console.log(`Successfully hung up call ${callControlId} after speaking (waited ${waitMs}ms to satisfy min duration)`);
             } catch (hangupError) {
               if (hangupError.response?.status === 422) {
-                console.log(`Call ${callControlId} already ended or cannot be hung up (422) - this is normal`);
+                // console.log(`Call ${callControlId} already ended or cannot be hung up (422) - this is normal`);
               } else if (hangupError.response?.status === 404) {
-                console.log(`Call ${callControlId} not found (404) - call may have already ended`);
+                // console.log(`Call ${callControlId} not found (404) - call may have already ended`);
               } else {
                 console.error(`Error hanging up call ${callControlId}:`, {
                   status: hangupError.response?.status,
@@ -275,12 +275,12 @@ const webhookController = async (req, res) => {
                 {},
                 { headers: { Authorization: `Bearer ${process.env.TELNYX_API_KEY}` } }
               );
-              console.log(`Successfully hung up call ${callControlId} after speaking (default wait)`);
+              // console.log(`Successfully hung up call ${callControlId} after speaking (default wait)`);
             } catch (hangupError) {
               if (hangupError.response?.status === 422) {
-                console.log(`Call ${callControlId} already ended or cannot be hung up (422) - this is normal`);
+                // console.log(`Call ${callControlId} already ended or cannot be hung up (422) - this is normal`);
               } else if (hangupError.response?.status === 404) {
-                console.log(`Call ${callControlId} not found (404) - call may have already ended`);
+                // console.log(`Call ${callControlId} not found (404) - call may have already ended`);
               } else {
                 console.error(`Error hanging up call ${callControlId}:`, {
                   status: hangupError.response?.status,
@@ -299,7 +299,7 @@ const webhookController = async (req, res) => {
         break;
 
       default:
-        console.log(`Unhandled webhook type: ${type}`);
+        // console.log(`Unhandled webhook type: ${type}`);
         break;
     }
 

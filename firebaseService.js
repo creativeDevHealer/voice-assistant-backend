@@ -19,7 +19,7 @@ if (!admin.apps.length) {
         // No databaseURL needed for Firestore
       });
     }
-    console.log('Firebase Admin SDK initialized successfully');
+    // console.log('Firebase Admin SDK initialized successfully');
   } catch (error) {
     console.error('Error initializing Firebase Admin SDK:', error);
   }
@@ -72,7 +72,7 @@ class FirebaseService {
       });
       
       // Debug: Log what we're trying to update
-      console.log(`Updating call ${callControlId} with:`, JSON.stringify(cleanedData, null, 2));
+      // console.log(`Updating call ${callControlId} with:`, JSON.stringify(cleanedData, null, 2));
       
       // Check if document exists first
       const doc = await docRef.get();
@@ -94,7 +94,7 @@ class FirebaseService {
         });
       }
       
-      console.log(`✅ Call status updated for ${callControlId}: ${status}`);
+      // console.log(`✅ Call status updated for ${callControlId}: ${status}`);
       return true;
     } catch (error) {
       console.error('Error updating call status:', error);
@@ -179,7 +179,7 @@ class FirebaseService {
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
-      console.log(`Broadcast session stored: ${broadcastId}`);
+      // console.log(`Broadcast session stored: ${broadcastId}`);
       return true;
     } catch (error) {
       console.error('Error storing broadcast session:', error);
@@ -199,7 +199,7 @@ class FirebaseService {
         ...cleanedData,
         updatedAt: admin.firestore.FieldValue.serverTimestamp()
       });
-      console.log(`Broadcast session updated: ${broadcastId}`);
+      // console.log(`Broadcast session updated: ${broadcastId}`);
       return true;
     } catch (error) {
       console.error('Error updating broadcast session:', error);
@@ -247,7 +247,7 @@ class FirebaseService {
       });
       
       await batch.commit();
-      console.log(`Canceled ${snapshot.size} calls for broadcast ${broadcastId}`);
+      // console.log(`Canceled ${snapshot.size} calls for broadcast ${broadcastId}`);
       return snapshot.size;
     } catch (error) {
       console.error('Error canceling broadcast calls:', error);
