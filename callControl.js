@@ -76,14 +76,14 @@ const webhookController = async (req, res) => {
           }
         } else {
           // Handle outbound calls normally
-          await firebaseService.updateCallStatus(callControlId, 'initiated');
+          // await firebaseService.updateCallStatus(callControlId, 'initiated');
         }
         break;
 
       case 'call.answered':
-        await firebaseService.updateCallStatus(callControlId, 'completed', {
-          answeredAt: new Date()
-        });
+        // await firebaseService.updateCallStatus(callControlId, 'completed', {
+        //   answeredAt: new Date()
+        // });
         
         // Get the call data to retrieve the script
         const callData = await firebaseService.getCallData(callControlId);
@@ -136,65 +136,65 @@ const webhookController = async (req, res) => {
               if (smsResult.success) {
                 // console.log(`📱 SMS sent to ${callData.phoneNumber} for hangup cause: ${hangupCause}`);
                 // SMS success -> update status to "completed"
-                await firebaseService.updateCallStatus(callControlId, 'completed', {
-                  hangupCause: hangupCause,
-                  duration: callDuration,
-                  endTime: new Date(),
-                  isShortDuration: callDuration < MIN_ANSWERED_DURATION_SECS,
-                  smsSent: true,
-                  smsMessageId: smsResult.messageId
-                });
+                // await firebaseService.updateCallStatus(callControlId, 'completed', {
+                //   hangupCause: hangupCause,
+                //   duration: callDuration,
+                //   endTime: new Date(),
+                //   isShortDuration: callDuration < MIN_ANSWERED_DURATION_SECS,
+                //   smsSent: true,
+                //   smsMessageId: smsResult.messageId
+                // });
               } else {
                 console.error(`❌ Failed to send SMS to ${callData.phoneNumber}:`, smsResult.error);
                 // SMS failed -> update status to "failed"
-                await firebaseService.updateCallStatus(callControlId, 'completed', {
-                  hangupCause: hangupCause,
-                  duration: callDuration,
-                  endTime: new Date(),
-                  isShortDuration: callDuration < MIN_ANSWERED_DURATION_SECS,
-                  smsSent: false,
-                  smsError: smsResult.error
-                });
+                // await firebaseService.updateCallStatus(callControlId, 'completed', {
+                //   hangupCause: hangupCause,
+                //   duration: callDuration,
+                //   endTime: new Date(),
+                //   isShortDuration: callDuration < MIN_ANSWERED_DURATION_SECS,
+                //   smsSent: false,
+                //   smsError: smsResult.error
+                // });
               }
             } else {
               console.warn(`⚠️ No phone number found for call ${callControlId}, cannot send SMS`);
               // No phone number -> update status to "completed"
-              await firebaseService.updateCallStatus(callControlId, 'completed', {
-                hangupCause: hangupCause,
-                duration: callDuration,
-                endTime: new Date(),
-                isShortDuration: callDuration < MIN_ANSWERED_DURATION_SECS
-              });
+              // await firebaseService.updateCallStatus(callControlId, 'completed', {
+              //   hangupCause: hangupCause,
+              //   duration: callDuration,
+              //   endTime: new Date(),
+              //   isShortDuration: callDuration < MIN_ANSWERED_DURATION_SECS
+              // });
             }
           } catch (smsError) {
             console.error(`❌ Error processing SMS for call ${callControlId}:`, smsError);
             // SMS error -> update status to "failed"
-            await firebaseService.updateCallStatus(callControlId, 'completed', {
-              hangupCause: hangupCause,
-              duration: callDuration,
-              endTime: new Date(),
-              isShortDuration: callDuration < MIN_ANSWERED_DURATION_SECS,
-              smsSent: false,
-              smsError: smsError.message
-            });
+            // await firebaseService.updateCallStatus(callControlId, 'completed', {
+            //   hangupCause: hangupCause,
+            //   duration: callDuration,
+            //   endTime: new Date(),
+            //   isShortDuration: callDuration < MIN_ANSWERED_DURATION_SECS,
+            //   smsSent: false,
+            //   smsError: smsError.message
+            // });
           }
         } else {
           // Update status without SMS for other hangup causes
-          await firebaseService.updateCallStatus(callControlId, status, {
-            hangupCause: hangupCause,
-            duration: callDuration,
-            endTime: new Date(),
-            isShortDuration: callDuration < MIN_ANSWERED_DURATION_SECS
-          });
+          // await firebaseService.updateCallStatus(callControlId, status, {
+          //   hangupCause: hangupCause,
+          //   duration: callDuration,
+          //   endTime: new Date(),
+          //   isShortDuration: callDuration < MIN_ANSWERED_DURATION_SECS
+          // });
         }
         break;
 
       case 'call.speak.ended':
-        await firebaseService.updateCallStatus(callControlId, 'completed');
+        // await firebaseService.updateCallStatus(callControlId, 'completed');
         break;
 
       case 'call.bridged':
-        await firebaseService.updateCallStatus(callControlId, 'in-progress');
+        // await firebaseService.updateCallStatus(callControlId, 'in-progress');
         break;
 
       default:
