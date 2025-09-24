@@ -129,7 +129,7 @@ const webhookController = async (req, res) => {
           try {
             const callData = await firebaseService.getCallData(callControlId);
             if (callData && callData.phoneNumber) {
-              const smsResult = await sendSMS(callData.phoneNumber, callData.script);
+              // const smsResult = await sendSMS(callData.phoneNumber, callData.script);
               // console.log(vmCallData.script);
               
               if (smsResult.success) {
