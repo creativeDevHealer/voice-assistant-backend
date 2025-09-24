@@ -154,7 +154,7 @@ app.post('/api/make-call', async (req, res) => {
       if (isChannelLimitError) {
         channelLimitHits++;
         
-         const waitTime = Math.min(30000 + (channelLimitHits * 10000), 120000); // Increased wait times
+         const waitTime = Math.min(20000 + (channelLimitHits * 10000), 120000); // Increased wait times
          console.warn(`⚠️ Channel capacity reached for ${phoneNumbers} (hit #${channelLimitHits}), waiting ${waitTime/1000} seconds and retrying...`);
         
         await new Promise(resolve => setTimeout(resolve, waitTime));
