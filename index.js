@@ -223,6 +223,7 @@ app.post('/api/make-call', async (req, res) => {
           return { success: false, phoneNumbers, error: retryErrorMsg };
         }
       } else {
+        console.error(error);
         console.error(`❌ Error creating call for ${phoneNumbers}:`, errorMsg);        
         return { success: false, phoneNumbers, error: errorMsg };
       }
