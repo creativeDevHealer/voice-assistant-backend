@@ -329,15 +329,31 @@ app.get('/api/call-counts', async (req, res) => {
   }
 });
 
+// Cache for channel status to reduce Firebase calls
+let channelStatusCache = {
+  data: null,
+  lastUpdated: 0,
+  ttl: 10000 // 10 seconds cache
+};
+
 // API endpoint to get channel capacity status
 app.get('/api/channel-status', async (req, res) => {
   try {
+    const now = Date.now();
+    
+    // Use cache if data is fresh
+    if (channelStatusCache.data && (now - channelStatusCache.lastUpdated) < channelStatusCache.ttl) {
+      console.log('📊 Using cached channel status');
+      return res.json(channelStatusCache.data);
+    }
+    
+    console.log('📊 Fetching fresh channel status from Firebase');
     const activeCalls = await firebaseService.getActiveCalls();
     const pendingCalls = activeCalls.filter(call => call.status === 'pending').length;
     const ringingCalls = activeCalls.filter(call => call.status === 'ringing').length;
     const totalActive = pendingCalls + ringingCalls;
     
-    res.json({
+    const responseData = {
       success: true,
       data: {
         totalActiveCalls: totalActive,
@@ -354,10 +370,25 @@ app.get('/api/channel-status', async (req, res) => {
           "Consider reducing batch size or increasing delays"
         ] : []
       }
-    });
+    };
+    
+    // Update cache
+    channelStatusCache.data = responseData;
+    channelStatusCache.lastUpdated = now;
+    
+    res.json(responseData);
 
   } catch (error) {
     console.error('Error getting channel status:', error);
+    
+    // If Firebase quota exceeded, return cached data if available
+    if (error.code === 8 || error.message?.includes('RESOURCE_EXHAUSTED')) {
+      console.warn('⚠️ Firebase quota exceeded, returning cached channel status');
+      if (channelStatusCache.data) {
+        return res.json(channelStatusCache.data);
+      }
+    }
+    
     res.status(500).json({
       success: false,
       message: 'Error retrieving channel status',
