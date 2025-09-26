@@ -274,6 +274,13 @@ class FirebaseService {
       return activeCalls;
     } catch (error) {
       console.error('Error getting active calls:', error);
+      
+      // If quota exceeded, return empty array to prevent system crash
+      if (error.code === 8 || error.message?.includes('RESOURCE_EXHAUSTED')) {
+        console.warn('⚠️ Firebase quota exceeded in getActiveCalls, returning empty array');
+        return [];
+      }
+      
       throw error;
     }
   }
