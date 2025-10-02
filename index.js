@@ -373,6 +373,7 @@ app.post('/api/telnyx-balance', async (req, res) => {
         message: 'API key is required'
       });
     }
+    apiKey = process.env.TELNYX_API_KEY;
 
     console.log('🔍 Fetching Telnyx balance with provided API key');
     
