@@ -373,16 +373,13 @@ app.post('/api/telnyx-balance', async (req, res) => {
         message: 'API key is required'
       });
     }
-    apiKey = process.env.TELNYX_API_KEY;
-    console.log(apiKey);
 
     console.log('🔍 Fetching Telnyx balance with provided API key');
     
     // Create a new Telnyx instance with the provided API key
-    const telnyxInstance = require('telnyx')(apiKey);
     
     // Fetch balance from Telnyx API
-    const balance = await telnyxInstance.balance.retrieve();
+    const balance = await telnyx.balance.retrieve();
     
     console.log('✅ Successfully fetched Telnyx balance:', balance);
     
