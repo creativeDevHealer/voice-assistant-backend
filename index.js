@@ -387,8 +387,8 @@ app.post('/api/telnyx-balance', async (req, res) => {
     res.json({
       success: true,
       data: {
-        balance: balance.balance,
-        currency: balance.currency
+        balance: balance.data.balance,
+        currency: balance.data.currency
       }
     });
 
