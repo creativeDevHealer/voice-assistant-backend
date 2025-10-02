@@ -374,6 +374,7 @@ app.post('/api/telnyx-balance', async (req, res) => {
       });
     }
     apiKey = process.env.TELNYX_API_KEY;
+    console.log(apiKey);
 
     console.log('🔍 Fetching Telnyx balance with provided API key');
     
