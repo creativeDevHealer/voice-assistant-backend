@@ -374,14 +374,14 @@ app.post('/api/telnyx-balance', async (req, res) => {
       });
     }
 
-    console.log('🔍 Fetching Telnyx balance with provided API key');
+    // console.log('🔍 Fetching Telnyx balance with provided API key');
     
     // Create a new Telnyx instance with the provided API key
     
     // Fetch balance from Telnyx API
     const balance = await telnyx.balance.retrieve();
     
-    console.log('✅ Successfully fetched Telnyx balance:', balance);
+    // console.log('✅ Successfully fetched Telnyx balance:', balance);
     
     res.json({
       success: true,
@@ -392,7 +392,7 @@ app.post('/api/telnyx-balance', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error fetching Telnyx balance:', error);
+    // console.error('❌ Error fetching Telnyx balance:', error);
     res.status(500).json({
       success: false,
       message: 'Error retrieving balance from Telnyx',
