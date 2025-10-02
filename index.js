@@ -362,6 +362,46 @@ app.get('/api/call-counts', async (req, res) => {
   }
 });
 
+// API endpoint to get Telnyx balance (proxy to avoid CORS)
+app.post('/api/telnyx-balance', async (req, res) => {
+  try {
+    const { apiKey } = req.body;
+    
+    if (!apiKey) {
+      return res.status(400).json({
+        success: false,
+        message: 'API key is required'
+      });
+    }
+
+    console.log('🔍 Fetching Telnyx balance with provided API key');
+    
+    // Create a new Telnyx instance with the provided API key
+    const telnyxInstance = require('telnyx')(apiKey);
+    
+    // Fetch balance from Telnyx API
+    const balance = await telnyxInstance.balance.retrieve();
+    
+    console.log('✅ Successfully fetched Telnyx balance:', balance);
+    
+    res.json({
+      success: true,
+      data: {
+        balance: balance.balance,
+        currency: balance.currency
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching Telnyx balance:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error retrieving balance from Telnyx',
+      error: error.message
+    });
+  }
+});
+
 // Cache for channel status to reduce Firebase calls
 let channelStatusCache = {
   data: null,
