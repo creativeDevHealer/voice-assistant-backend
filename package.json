@@ -17,6 +17,7 @@
     "express": "^4.17.1",
     "firebase": "^12.1.0",
     "firebase-admin": "^12.0.0",
+    "mongodb": "^6.20.0",
     "nodemon": "^2.0.6",
     "telnyx": "^1.10.2"
   }

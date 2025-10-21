@@ -4,8 +4,8 @@ const express = require('express');
 const cors = require('cors');
 const telnyx = require('telnyx')(process.env.TELNYX_API_KEY);
 
-// Use Firebase for persistent storage
-const firebaseService = require('./firebaseService');
+// Use MongoDB for persistent storage
+const mongodbService = require('./mongodbService');
 
 const callControlPath = '/call-control';
 const callControlOutboundPath = `${callControlPath}/webhook`;
@@ -37,7 +37,7 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use(callControlPath, callControl);
 
-// API endpoint for batch calls with Firebase storage
+// API endpoint for batch calls with MongoDB storage
 app.post('/api/make-call', async (req, res) => {
   try {
     let channelLimitHits = 0;
@@ -68,14 +68,14 @@ app.post('/api/make-call', async (req, res) => {
     
     // Store broadcast session
     try {
-      await firebaseService.storeBroadcastSession(broadcastId, {
+      await mongodbService.storeBroadcastSession(broadcastId, {
         totalCalls: phoneNumbers.length,
         status: 'active',
         startTime: new Date()
       });
-    } catch (firebaseError) {
-      console.error('Error storing broadcast session:', firebaseError);
-      // Continue with broadcast even if Firebase storage fails
+    } catch (mongodbError) {
+      console.error('Error storing broadcast session:', mongodbError);
+      // Continue with broadcast even if MongoDB storage fails
     }
 
     try {
@@ -113,7 +113,7 @@ app.post('/api/make-call', async (req, res) => {
       for (const call_leg of validCallLegs) {
         const callControlId = call_leg.call_control_id;
         try {
-          await firebaseService.storeCallData(callControlId, {
+          await mongodbService.storeCallData(callControlId, {
             callSid: callControlId,
             callLegId: call_leg.call_leg_id,
             callSessionId: callSessionId,
@@ -187,7 +187,7 @@ app.post('/api/make-call', async (req, res) => {
           for (const call_leg of validRetryCallLegs) {
             const callControlId = call_leg.call_control_id;
             try {
-              await firebaseService.storeCallData(callControlId, {
+              await mongodbService.storeCallData(callControlId, {
                 callSid: callControlId,
                 callLegId: call_leg.call_leg_id,
                 callSessionId: callSessionId,
@@ -226,7 +226,7 @@ app.post('/api/make-call', async (req, res) => {
           for (let i = 0; i < syntheticCallSids.length; i++) {
             const sid = syntheticCallSids[i];
             try {
-              await firebaseService.storeCallData(sid, {
+              await mongodbService.storeCallData(sid, {
                 callSid: sid,
                 callLegId: null,
                 callSessionId: null,
@@ -266,7 +266,7 @@ app.post('/api/make-call', async (req, res) => {
           for (let i = 0; i < syntheticCallSids.length; i++) {
             const sid = syntheticCallSids[i];
             try {
-              await firebaseService.storeCallData(sid, {
+              await mongodbService.storeCallData(sid, {
                 callSid: sid,
                 callLegId: null,
                 callSessionId: null,
@@ -311,7 +311,7 @@ app.post('/api/call-status/:callSid', async (req, res) => {
   try {
     const { callSid } = req.params;
     
-    const callData = await firebaseService.getCallData(callSid);
+    const callData = await mongodbService.getCallData(callSid);
     
     if (!callData) {
       return res.status(404).json({
@@ -345,7 +345,7 @@ app.get('/api/call-counts', async (req, res) => {
   try {
     const { broadcastId } = req.query;
     
-    const counts = await firebaseService.getCallCounts(broadcastId);
+    const counts = await mongodbService.getCallCounts(broadcastId);
     
     res.json({
       success: true,
@@ -401,7 +401,7 @@ app.post('/api/telnyx-balance', async (req, res) => {
   }
 });
 
-// Cache for channel status to reduce Firebase calls
+// Cache for channel status to reduce MongoDB calls
 let channelStatusCache = {
   data: null,
   lastUpdated: 0,
@@ -419,8 +419,8 @@ app.get('/api/channel-status', async (req, res) => {
       return res.json(channelStatusCache.data);
     }
     
-    console.log('📊 Fetching fresh channel status from Firebase');
-    const activeCalls = await firebaseService.getActiveCalls();
+    console.log('📊 Fetching fresh channel status from MongoDB');
+    const activeCalls = await mongodbService.getActiveCalls();
     const pendingCalls = activeCalls.filter(call => call.status === 'pending').length;
     const ringingCalls = activeCalls.filter(call => call.status === 'ringing').length;
     const totalActive = pendingCalls + ringingCalls;
@@ -453,9 +453,9 @@ app.get('/api/channel-status', async (req, res) => {
   } catch (error) {
     console.error('Error getting channel status:', error);
     
-    // If Firebase quota exceeded, return cached data if available
-    if (error.code === 8 || error.message?.includes('RESOURCE_EXHAUSTED')) {
-      console.warn('⚠️ Firebase quota exceeded, returning cached channel status');
+    // If MongoDB connection error, return cached data if available
+    if (error.message?.includes('connection') || error.message?.includes('timeout')) {
+      console.warn('⚠️ MongoDB connection error, returning cached channel status');
       if (channelStatusCache.data) {
         return res.json(channelStatusCache.data);
       }
@@ -478,7 +478,7 @@ app.post('/api/cancel-all-calls', async (req, res) => {
     
     if (broadcastId) {
       // Cancel specific broadcast - get active calls for the broadcast and hang them up
-      const broadcastCalls = await firebaseService.getBroadcastCalls(broadcastId);
+      const broadcastCalls = await mongodbService.getBroadcastCalls(broadcastId);
       const activeBroadcastCalls = broadcastCalls.filter(call => 
         ['pending', 'ringing', 'initiated', 'answered'].includes(call.status)
       );
@@ -488,15 +488,15 @@ app.post('/api/cancel-all-calls', async (req, res) => {
           // Try to hangup the call via Telnyx API
           await telnyx.calls.hangup({ call_control_id: call.callControlId });
           
-          // Update status in Firebase
-          await firebaseService.updateCallStatus(call.callControlId, 'canceled');
+          // Update status in MongoDB
+          await mongodbService.updateCallStatus(call.callControlId, 'canceled');
           canceledCount++;
           // console.log(`✅ Canceled broadcast call ${call.callControlId}`);
         } catch (error) {
           // console.error(`❌ Error canceling broadcast call ${call.callControlId}:`, error);
-          // Still update status in Firebase even if API call fails
+          // Still update status in MongoDB even if API call fails
           // try {
-          //   await firebaseService.updateCallStatus(call.callControlId, 'canceled');
+          //   await mongodbService.updateCallStatus(call.callControlId, 'canceled');
           //   canceledCount++;
           // } catch (updateError) {
           //   console.error(`Error updating status for ${call.callControlId}:`, updateError);
@@ -506,29 +506,29 @@ app.post('/api/cancel-all-calls', async (req, res) => {
       
       // Update broadcast status to canceled
       try {
-        await firebaseService.updateBroadcastSession(broadcastId, { status: 'canceled' });
+        await mongodbService.updateBroadcastSession(broadcastId, { status: 'canceled' });
       } catch (broadcastUpdateError) {
         console.error('Error updating broadcast status:', broadcastUpdateError);
       }
       
     } else {
       // Get all active calls and cancel them
-      const activeCalls = await firebaseService.getActiveCalls();
+      const activeCalls = await mongodbService.getActiveCalls();
       
       for (const call of activeCalls) {
         try {
           // Try to hangup the call via Telnyx API
           await telnyx.calls.hangup({ call_control_id: call.callControlId });
           
-          // Update status in Firebase
-          await firebaseService.updateCallStatus(call.callControlId, 'canceled');
+          // Update status in MongoDB
+          await mongodbService.updateCallStatus(call.callControlId, 'canceled');
           canceledCount++;
           console.log(`✅ Canceled call ${call.callControlId}`);
         } catch (error) {
           console.error(`❌ Error canceling call ${call.callControlId}:`, error);
-          // Still update status in Firebase even if API call fails
+          // Still update status in MongoDB even if API call fails
           try {
-            await firebaseService.updateCallStatus(call.callControlId, 'canceled');
+            await mongodbService.updateCallStatus(call.callControlId, 'canceled');
             canceledCount++;
           } catch (updateError) {
             console.error(`Error updating status for ${call.callControlId}:`, updateError);
