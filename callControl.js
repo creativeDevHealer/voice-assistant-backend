@@ -44,7 +44,7 @@ const webhookController = async (req, res) => {
     // if(event.data.event_type.includes('call')){
     //   console.log(event.data.payload.call_control_id, event.data.event_type);
     // }
-
+    console.log(event.data.payload.call_control_id, event.data.event_type);
     if (!callControlId) {
       // console.log('No call_control_id found in webhook');
       return res.sendStatus(200);
