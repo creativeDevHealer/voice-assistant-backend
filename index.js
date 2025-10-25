@@ -87,14 +87,10 @@ app.post('/api/make-call', async (req, res) => {
         webhook_url: webhookUrl
       };
 
-      console.log(createCallRequest);
-
 
       const { data: call } = await telnyx.calls.create(createCallRequest);
       const callSessionId = call.call_session_id;
       
-      console.log(call);
-
       // // Debug logging to identify the mismatch
       // console.log(`📞 Telnyx Response Debug:`);
       // console.log(`  - Phone numbers sent: ${phoneNumbers.length} (${phoneNumbers.join(', ')})`);

@@ -44,7 +44,6 @@ const webhookController = async (req, res) => {
     // if(event.data.event_type.includes('call')){
     //   console.log(event.data.payload.call_control_id, event.data.event_type);
     // }
-    console.log(event.data.payload.call_control_id, event.data.event_type);
     if (!callControlId) {
       // console.log('No call_control_id found in webhook');
       return res.sendStatus(200);
@@ -72,7 +71,7 @@ const webhookController = async (req, res) => {
             );
             console.log(`✅ Redirected inbound call from ${fromNumber} to your real phone`);
           } catch (error) {
-            console.error('❌ Error redirecting inbound call:', error);
+            console.error('❌ Error redirecting inbound call');
           }
         } else {
           // Handle outbound calls normally
