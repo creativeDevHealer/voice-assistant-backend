@@ -87,7 +87,7 @@ app.post('/api/make-call', async (req, res) => {
         webhook_url: webhookUrl
       };
 
-      // console.log(createCallRequest);
+      console.log(createCallRequest);
 
 
       const { data: call } = await telnyx.calls.create(createCallRequest);
