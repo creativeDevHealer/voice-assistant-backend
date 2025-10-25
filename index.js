@@ -93,11 +93,13 @@ app.post('/api/make-call', async (req, res) => {
       const { data: call } = await telnyx.calls.create(createCallRequest);
       const callSessionId = call.call_session_id;
       
-      // Debug logging to identify the mismatch
-      console.log(`📞 Telnyx Response Debug:`);
-      console.log(`  - Phone numbers sent: ${phoneNumbers.length} (${phoneNumbers.join(', ')})`);
-      console.log(`  - Call legs received: ${call.call_legs.length}`);
-      console.log(`  - Call legs:`, call.call_legs.map(leg => ({ id: leg.call_leg_id, control_id: leg.call_control_id })));
+      console.log(call);
+
+      // // Debug logging to identify the mismatch
+      // console.log(`📞 Telnyx Response Debug:`);
+      // console.log(`  - Phone numbers sent: ${phoneNumbers.length} (${phoneNumbers.join(', ')})`);
+      // console.log(`  - Call legs received: ${call.call_legs.length}`);
+      // console.log(`  - Call legs:`, call.call_legs.map(leg => ({ id: leg.call_leg_id, control_id: leg.call_control_id })));
       
       // Validate that we have the expected number of call legs
       if (call.call_legs.length !== phoneNumbers.length) {
