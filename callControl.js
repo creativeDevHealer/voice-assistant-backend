@@ -4,6 +4,7 @@ const axios = require('axios');
 
 // Use Firebase for persistent storage
 const firebaseService = require('./firebaseService');
+const mongodbService = require('./mongodbService');
 
 // Telnyx SMS configuration
 const telnyx = require('telnyx')(process.env.TELNYX_API_KEY);
@@ -86,7 +87,7 @@ const webhookController = async (req, res) => {
         console.log(event.data.payload);
         // Get the call data to retrieve the script
         console.log('----------------answered----------------');
-        const callData = await firebaseService.getCallData(callControlId);
+        const callData = await mongodbService.getCallData(callControlId);
         
         console.log(callData);
 
@@ -129,7 +130,7 @@ const webhookController = async (req, res) => {
         // Send SMS for specific hangup causes
         if (smsTriggerCauses.includes(hangupCause)) {
           try {
-            const callData = await firebaseService.getCallData(callControlId);
+            const callData = await mongodbService.getCallData(callControlId);
             if (callData && callData.phoneNumber) {
               // const smsResult = await sendSMS(callData.phoneNumber, callData.script);
               // console.log(vmCallData.script);
