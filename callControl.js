@@ -87,6 +87,8 @@ const webhookController = async (req, res) => {
         // Get the call data to retrieve the script
         const callData = await firebaseService.getCallData(callControlId);
         
+        console.log(callData);
+
         if (callData && callData.script) {
           // Speak the personalized script
           try {
