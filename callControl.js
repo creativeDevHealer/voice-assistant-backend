@@ -84,12 +84,12 @@ const webhookController = async (req, res) => {
         // await firebaseService.updateCallStatus(callControlId, 'completed', {
         //   answeredAt: new Date()
         // });
-        console.log(event.data.payload);
+        // console.log(event.data.payload);
         // Get the call data to retrieve the script
-        console.log('----------------answered----------------');
+        // console.log('----------------answered----------------');
         const callData = await mongodbService.getCallData(callControlId);
         
-        console.log(callData);
+        // console.log(callData);
 
         if (callData && callData.script) {
           // Speak the personalized script
