@@ -97,53 +97,86 @@ app.post('/api/make-call', async (req, res) => {
       // console.log(`  - Call legs received: ${call.call_legs.length}`);
       // console.log(`  - Call legs:`, call.call_legs.map(leg => ({ id: leg.call_leg_id, control_id: leg.call_control_id })));
       
-      console.log(call);
 
-      // Validate that we have the expected number of call legs
-      if (call.call_legs.length !== phoneNumbers.length) {
-        console.warn(`⚠️ MISMATCH: Expected ${phoneNumbers.length} call legs but received ${call.call_legs.length}`);
-        console.warn(`⚠️ This could indicate Telnyx API issues or retry behavior`);
+
+      if(phoneNumbers.length > 1){
+        if (call.call_legs.length !== phoneNumbers.length) {
+          console.warn(`⚠️ MISMATCH: Expected ${phoneNumbers.length} call legs but received ${call.call_legs.length}`);
+          console.warn(`⚠️ This could indicate Telnyx API issues or retry behavior`);
+        }
+        
+        // Store call data in storage - only use the first N call legs where N = phoneNumbers.length
+        const validCallLegs = call.call_legs.slice(0, phoneNumbers.length);
+        console.log(`📋 Using ${validCallLegs.length} call legs for ${phoneNumbers.length} phone numbers`);
+        
+        let index = 0;
+        for (const call_leg of validCallLegs) {
+          const callControlId = call_leg.call_control_id;
+          try {
+            await mongodbService.storeCallData(callControlId, {
+              callSid: callControlId,
+              callLegId: call_leg.call_leg_id,
+              callSessionId: callSessionId,
+              broadcastId: broadcastId,
+              contactId: contactIds[index],
+              contactName: contactNames[index],
+              phoneNumber: phoneNumbers[index],
+              script: contents[index],
+              status: 'pending'
+            });
+            console.log(`✅ Call data stored for ${callControlId} (phone: ${phoneNumbers[index]})`);
+          } catch (storageError) {
+            console.error('Error storing call data:', storageError);
+          }
+          index++;
+        }
+        
+        // Return only the callSids that correspond to actual phone numbers
+        const validCallSids = validCallLegs.map(call_leg => call_leg.call_control_id);
+        
+        console.log(`📤 Returning ${validCallSids.length} callSids: [${validCallSids.join(', ')}]`);
+        res.status(201).json({
+          success: true,
+          data: {
+            broadcastId: broadcastId,
+            callSids: validCallSids,
+            channelLimitHits: 0,
+          }
+        });
       }
-      
-      // Store call data in storage - only use the first N call legs where N = phoneNumbers.length
-      const validCallLegs = call.call_legs.slice(0, phoneNumbers.length);
-      console.log(`📋 Using ${validCallLegs.length} call legs for ${phoneNumbers.length} phone numbers`);
-      
-      let index = 0;
-      for (const call_leg of validCallLegs) {
-        const callControlId = call_leg.call_control_id;
+      else if(phoneNumbers.length === 1){
+        console.log('---------------one contact----------------');
+        console.log(call.call_leg_id);
+        console.log(call.call_control_id);
+        console.log(call.call_session_id);
+        const callControlId = call.call_control_id;
         try {
           await mongodbService.storeCallData(callControlId, {
             callSid: callControlId,
-            callLegId: call_leg.call_leg_id,
+            callLegId: call.call_leg_id,
             callSessionId: callSessionId,
             broadcastId: broadcastId,
-            contactId: contactIds[index],
-            contactName: contactNames[index],
-            phoneNumber: phoneNumbers[index],
-            script: contents[index],
+            contactId: contactIds[0],
+            contactName: contactNames[0],
+            phoneNumber: phoneNumbers[0],
+            script: contents[0],
             status: 'pending'
           });
-          console.log(`✅ Call data stored for ${callControlId} (phone: ${phoneNumbers[index]})`);
+          console.log(`✅ Call data stored for ${callControlId} (phone: ${phoneNumbers[0]})`);
         } catch (storageError) {
           console.error('Error storing call data:', storageError);
         }
-        index++;
+        const validCallSids = [callControlId];
+        console.log(`📤 Returning ${validCallSids.length} callSids: [${validCallSids.join(', ')}]`);
+        res.status(201).json({
+          success: true,
+          data: {
+            broadcastId: broadcastId,
+            callSids: validCallSids,
+            channelLimitHits: 0,
+          }
+        });
       }
-      
-      // Return only the callSids that correspond to actual phone numbers
-      const validCallSids = validCallLegs.map(call_leg => call_leg.call_control_id);
-      
-      console.log(`📤 Returning ${validCallSids.length} callSids: [${validCallSids.join(', ')}]`);
-      
-      res.status(201).json({
-        success: true,
-        data: {
-          broadcastId: broadcastId,
-          callSids: validCallSids,
-          channelLimitHits: 0,
-        }
-      });
 
       return { success: true, phoneNumbers, contactIds, contactNames, contents };
 
