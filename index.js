@@ -96,8 +96,6 @@ app.post('/api/make-call', async (req, res) => {
       // console.log(`  - Phone numbers sent: ${phoneNumbers.length} (${phoneNumbers.join(', ')})`);
       // console.log(`  - Call legs received: ${call.call_legs.length}`);
       // console.log(`  - Call legs:`, call.call_legs.map(leg => ({ id: leg.call_leg_id, control_id: leg.call_control_id })));
-      
-
 
       if(phoneNumbers.length > 1){
         if (call.call_legs.length !== phoneNumbers.length) {
@@ -145,10 +143,6 @@ app.post('/api/make-call', async (req, res) => {
         });
       }
       else if(phoneNumbers.length === 1){
-        console.log('---------------one contact----------------');
-        console.log(call.call_leg_id);
-        console.log(call.call_control_id);
-        console.log(call.call_session_id);
         const callControlId = call.call_control_id;
         try {
           await mongodbService.storeCallData(callControlId, {

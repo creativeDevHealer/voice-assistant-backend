@@ -170,7 +170,7 @@ const webhookController = async (req, res) => {
               // });
             }
           } catch (smsError) {
-            console.error(`❌ Error processing SMS for call ${callControlId}:`, smsError);
+            // console.error(`❌ Error processing SMS for call ${callControlId}:`, smsError);
             // SMS error -> update status to "failed"
             // await firebaseService.updateCallStatus(callControlId, 'completed', {
             //   hangupCause: hangupCause,
