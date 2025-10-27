@@ -40,7 +40,6 @@ const webhookController = async (req, res) => {
     const event = req.body;
     const type = event?.data?.event_type;
     const callControlId = event?.data?.payload?.call_control_id;
-    console.log(event.data);
     // if(event.data.event_type.includes('call')){
     //   console.log(event.data.payload.call_control_id, event.data.event_type);
     // }
@@ -50,6 +49,7 @@ const webhookController = async (req, res) => {
     }
 
     // Update call status in Firebase based on event type
+    console.log(type);
     switch (type) {
       case 'call.initiated':
         const direction = event?.data?.payload?.direction;
@@ -85,6 +85,7 @@ const webhookController = async (req, res) => {
         // });
         
         // Get the call data to retrieve the script
+        console.log('----------------answered----------------');
         const callData = await firebaseService.getCallData(callControlId);
         
         console.log(callData);
@@ -157,7 +158,7 @@ const webhookController = async (req, res) => {
                 // });
               }
             } else {
-              console.warn(`⚠️ No phone number found for call ${callControlId}, cannot send SMS`);
+              // console.warn(`⚠️ No phone number found for call ${callControlId}, cannot send SMS`);
               // No phone number -> update status to "completed"
               // await firebaseService.updateCallStatus(callControlId, 'completed', {
               //   hangupCause: hangupCause,
