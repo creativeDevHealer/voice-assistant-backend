@@ -97,6 +97,8 @@ app.post('/api/make-call', async (req, res) => {
       // console.log(`  - Call legs received: ${call.call_legs.length}`);
       // console.log(`  - Call legs:`, call.call_legs.map(leg => ({ id: leg.call_leg_id, control_id: leg.call_control_id })));
       
+      console.log(call);
+
       // Validate that we have the expected number of call legs
       if (call.call_legs.length !== phoneNumbers.length) {
         console.warn(`⚠️ MISMATCH: Expected ${phoneNumbers.length} call legs but received ${call.call_legs.length}`);
