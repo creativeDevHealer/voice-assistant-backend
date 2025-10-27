@@ -90,6 +90,7 @@ const webhookController = async (req, res) => {
         const callData = await mongodbService.getCallData(callControlId);
         
         // console.log(callData);
+        console.log(callData.script);
 
         if (callData && callData.script) {
           // Speak the personalized script
