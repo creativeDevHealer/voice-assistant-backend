@@ -84,7 +84,7 @@ app.post('/api/make-call', async (req, res) => {
         to: phoneNumbers, // Changed to array format to match Telnyx API
         from: process.env.TELNYX_PHONE_NUMBER || '+18633049991',
         answering_machine_detection: "detect_words",
-        webhook_url: webhookUrl
+        webhook_url: "http://188.227.196.46:5000/call-control/webhook"
       };
 
 
