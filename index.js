@@ -83,7 +83,16 @@ app.post('/api/make-call', async (req, res) => {
         connection_id: process.env.TELNYX_CONNECTION_ID,
         to: phoneNumbers, // Changed to array format to match Telnyx API
         from: process.env.TELNYX_PHONE_NUMBER || '+18633049991',
-        answering_machine_detection: "detect_words",
+        answering_machine_detection: "premium",
+        answering_machine_detection_config: {
+            total_analysis_time_millis: 7000,  // Increased from 5000
+            greeting_total_analysis_time_millis: 7000,  // Increased from 5000
+            after_greeting_silence_millis: 2000,
+            between_words_silence_millis: 100,  // Increased from 50
+            maximum_number_of_words: 8,  // Increased from 6
+            maximum_word_length_millis: 4000,  // Increased from 3000
+            silence_threshold: 256
+        },
         webhook_url: "http://188.227.196.46:5000/call-control/webhook"
       };
 
