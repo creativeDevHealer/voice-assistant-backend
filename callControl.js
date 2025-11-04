@@ -63,11 +63,11 @@ const webhookController = async (req, res) => {
       case 'call.machine.premium.detection.ended':
         const result = payload.result;
         callState.amdResult = result;
-        console.log('AMD Result: ${result}');
+        console.log(`AMD Result: ${result}`);
         if (result === 'machine') {
           console.log('Machine detected - waiting for greeting to end');
           // DON'T play script here - wait for greeting to end
-        } else if (result === 'human') {
+        } else {
           console.log('Human answered the call');
           // Only play if script hasn't been played yet
           if (!callState.scriptPlayed) {
