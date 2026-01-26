@@ -14,6 +14,20 @@ const webhookUrl = (new URL(callControlOutboundPath, process.env.BASE_URL)).href
 const callControl = require('./callControl');
 const app = express();
 
+const fromPhoneNumbers = 
+['+18632228419', '+16416660012', '+18633049991',
+  '+14646660141', '+16452305182', '+14645298077',
+  '+18632228638', '+14644001131', '+13187825613',
+  '+14642402651', '+15053988427', '+15054941679',
+  '+17287771009', '+15057336762', '+15059430490',
+  '+16452305186', '+16452305189', '+17287771010',
+  '+17287771040', '+17282140046', '+16452305184',
+  '+16452199148', '+14646660162', '+15053548299',
+  '+15053548736', '+15054941445', '+17287771178',
+  '+16452305176', '+16452305171', '+14645298168',
+  '+17287771072', '+17287771015', '+13188584130',
+  '+12105100544', '+12107618374',
+];
 // CORS handling FIRST - before any other middleware
 // app.use((req, res, next) => {
 //   res.header('Access-Control-Allow-Origin', '*');
@@ -41,7 +55,7 @@ app.use(callControlPath, callControl);
 app.post('/api/make-call', async (req, res) => {
   try {
     let channelLimitHits = 0;
-    const { phonenumber, contact_id, contact_name, content } = req.body;
+    const { phonenumber, contact_id, contact_name, content, batchIndex } = req.body;
 
     if (!phonenumber || !content) {
       return res.status(400).json({ 
@@ -82,7 +96,7 @@ app.post('/api/make-call', async (req, res) => {
       const createCallRequest = {
         connection_id: process.env.TELNYX_CONNECTION_ID,
         to: phoneNumbers, // Changed to array format to match Telnyx API
-        from: process.env.TELNYX_PHONE_NUMBER || '+18633049991',
+        from: fromPhoneNumbers[batchIndex % fromPhoneNumbers.length],
         answering_machine_detection: "premium",
         answering_machine_detection_config: {
             total_analysis_time_millis: 7000,  // Increased from 5000
