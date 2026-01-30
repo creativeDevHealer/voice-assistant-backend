@@ -65,7 +65,7 @@ const webhookController = async (req, res) => {
           // DON'T play script here - wait for greeting to end
         } else {
           console.log('Human answered the call');
-          await playConsentMessageAndGather(callControlId);
+          await playConsentMessageAndGather(callControlId, callData.contactNames);
         }
         break;
       case 'call.machine.premium.greeting.ended':
@@ -177,12 +177,12 @@ async function speakScript(callControlId, script) {
   }
 }
 
-async function playConsentMessageAndGather(callControlId) {
+async function playConsentMessageAndGather(callControlId, contactName) {
   try {
     await axios.post(
       `https://api.telnyx.com/v2/calls/${encodeURIComponent(callControlId)}/actions/gather_using_speak`,
       {
-        payload: "Hello, this is PPG. You've been named a reference for someone. To consent to hear important information regarding his case, please press 1 to consent or press 2 to decline.",
+        payload: `Hello, this number has been listed as a point of contact for ${contactName}. We can only disclose the purpose of the contact if you agree to receive the info. Press 1 to consent, or press 2 to decline.`,
         payload_type: "text",
         voice: "female",
         language: "en-US",
