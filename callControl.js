@@ -65,7 +65,16 @@ const webhookController = async (req, res) => {
           // DON'T play script here - wait for greeting to end
         } else {
           console.log('Human answered the call');
-          await playConsentMessageAndGather(callControlId, callData.contactNames);
+          try {
+            const callData = await mongodbService.getCallData(callControlId);
+            if (callData && callData.contactNames) {
+              await playConsentMessageAndGather(callControlId, callData.contactNames);
+            } else {
+              console.error('No script found for call:', callControlId);
+            }
+          } catch (error) {
+            console.error('Error speaking consent message:', error);
+          }
         }
         break;
       case 'call.machine.premium.greeting.ended':
