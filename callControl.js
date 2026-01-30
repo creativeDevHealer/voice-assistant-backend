@@ -67,10 +67,10 @@ const webhookController = async (req, res) => {
           console.log('Human answered the call');
           try {
             const callData = await mongodbService.getCallData(callControlId);
-            if (callData && callData.contactNames) {
-              await playConsentMessageAndGather(callControlId, callData.contactNames);
+            if (callData && callData.contactName) {
+              await playConsentMessageAndGather(callControlId, callData.contactName);
             } else {
-              console.error('No script found for call:', callControlId);
+              console.error('No contactName:', callControlId);
             }
           } catch (error) {
             console.error('Error speaking consent message:', error);
