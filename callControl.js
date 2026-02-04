@@ -68,6 +68,7 @@ const webhookController = async (req, res) => {
           try {
             const callData = await mongodbService.getCallData(callControlId);
             if (callData && callData.contactName) {
+              console.log(callData.contactName);
               await playConsentMessageAndGather(callControlId, callData.contactName);
             } else {
               console.error('No contactName:', callControlId);
