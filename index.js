@@ -54,13 +54,12 @@ app.use(callControlPath, callControl);
 // API endpoint for batch calls with MongoDB storage
 app.post('/api/make-call', async (req, res) => {
   try {
-    let channelLimitHits = 0;
     const { phonenumber, contact_id, contact_name, content, batchIndex } = req.body;
 
     if (!phonenumber || !content) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Phone number and content are required' 
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number and content are required'
       });
     }
 
@@ -68,18 +67,20 @@ app.post('/api/make-call', async (req, res) => {
     const phoneNumbers = phonenumber.split(',').map(p => p.trim()).filter(p => p);
     const contactIds = contact_id ? contact_id.split(',').map(c => c.trim()) : [];
     const contactNames = contact_name ? contact_name.split(',').map(n => n.trim()) : [];
-    const contents = Array.isArray(content) ? content : [content];
+    const contents = Array.isArray(content) ? content : 
+                     phoneNumbers.length > 1 ? phoneNumbers.map(() => content) : [content];
 
-    // Validate input
     if (phoneNumbers.length === 0) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'No valid phone numbers provided' 
+      return res.status(400).json({
+        success: false,
+        message: 'No valid phone numbers provided'
       });
     }
 
     const broadcastId = `broadcast_${Date.now()}`;
-    
+    const callSids = [];
+    let channelLimitHits = 0;
+
     // Store broadcast session
     try {
       await mongodbService.storeBroadcastSession(broadcastId, {
@@ -89,269 +90,98 @@ app.post('/api/make-call', async (req, res) => {
       });
     } catch (mongodbError) {
       console.error('Error storing broadcast session:', mongodbError);
-      // Continue with broadcast even if MongoDB storage fails
     }
 
-    try {
-      const createCallRequest = {
-        connection_id: process.env.TELNYX_CONNECTION_ID,
-        to: phoneNumbers, // Changed to array format to match Telnyx API
-        from: fromPhoneNumbers[batchIndex % fromPhoneNumbers.length],
-        answering_machine_detection: "premium",
-        answering_machine_detection_config: {
-            total_analysis_time_millis: 7000,  // Increased from 5000
-            greeting_total_analysis_time_millis: 7000,  // Increased from 5000
+    // Process each phone number INDIVIDUALLY
+    for (let i = 0; i < phoneNumbers.length; i++) {
+      const phoneNumber = phoneNumbers[i];
+      const fromNumber = fromPhoneNumbers[(batchIndex + i) % fromPhoneNumbers.length];
+
+      try {
+        const createCallRequest = {
+          connection_id: process.env.TELNYX_CONNECTION_ID,
+          to: phoneNumber, //  Single phone number string, NOT an array
+          from: fromNumber,
+          answering_machine_detection: "premium",
+          answering_machine_detection_config: {
+            total_analysis_time_millis: 7000,
+            greeting_total_analysis_time_millis: 7000,
             after_greeting_silence_millis: 2000,
-            between_words_silence_millis: 100,  // Increased from 50
-            maximum_number_of_words: 8,  // Increased from 6
-            maximum_word_length_millis: 4000,  // Increased from 3000
+            between_words_silence_millis: 100,
+            maximum_number_of_words: 8,
+            maximum_word_length_millis: 4000,
             silence_threshold: 256
-        },
-        webhook_url: "http://188.227.196.46:5000/call-control/webhook"
-      };
+          },
+          webhook_url: "http://188.227.196.46:5000/call-control/webhook"  //  Plain URL
+        };
 
-
-      const { data: call } = await telnyx.calls.create(createCallRequest);
-      const callSessionId = call.call_session_id;
-      
-      // // Debug logging to identify the mismatch
-      // console.log(`📞 Telnyx Response Debug:`);
-      // console.log(`  - Phone numbers sent: ${phoneNumbers.length} (${phoneNumbers.join(', ')})`);
-      // console.log(`  - Call legs received: ${call.call_legs.length}`);
-      // console.log(`  - Call legs:`, call.call_legs.map(leg => ({ id: leg.call_leg_id, control_id: leg.call_control_id })));
-
-      if(phoneNumbers.length > 1){
-        if (call.call_legs.length !== phoneNumbers.length) {
-          console.warn(`⚠️ MISMATCH: Expected ${phoneNumbers.length} call legs but received ${call.call_legs.length}`);
-          console.warn(`⚠️ This could indicate Telnyx API issues or retry behavior`);
-        }
-        
-        // Store call data in storage - only use the first N call legs where N = phoneNumbers.length
-        const validCallLegs = call.call_legs.slice(0, phoneNumbers.length);
-        console.log(`📋 Using ${validCallLegs.length} call legs for ${phoneNumbers.length} phone numbers`);
-        
-        let index = 0;
-        for (const call_leg of validCallLegs) {
-          const callControlId = call_leg.call_control_id;
-          try {
-            await mongodbService.storeCallData(callControlId, {
-              callSid: callControlId,
-              callLegId: call_leg.call_leg_id,
-              callSessionId: callSessionId,
-              broadcastId: broadcastId,
-              contactId: contactIds[index],
-              contactName: contactNames[index],
-              phoneNumber: phoneNumbers[index],
-              script: contents[index],
-              status: 'pending'
-            });
-            console.log(`✅ Call data stored for ${callControlId} (phone: ${phoneNumbers[index]})`);
-          } catch (storageError) {
-            console.error('Error storing call data:', storageError);
-          }
-          index++;
-        }
-        
-        // Return only the callSids that correspond to actual phone numbers
-        const validCallSids = validCallLegs.map(call_leg => call_leg.call_control_id);
-        
-        console.log(`📤 Returning ${validCallSids.length} callSids: [${validCallSids.join(', ')}]`);
-        res.status(201).json({
-          success: true,
-          data: {
-            broadcastId: broadcastId,
-            callSids: validCallSids,
-            channelLimitHits: 0,
-          }
-        });
-      }
-      else if(phoneNumbers.length === 1){
+        const { data: call } = await telnyx.calls.create(createCallRequest);
         const callControlId = call.call_control_id;
-        try {
-          await mongodbService.storeCallData(callControlId, {
-            callSid: callControlId,
-            callLegId: call.call_leg_id,
-            callSessionId: callSessionId,
-            broadcastId: broadcastId,
-            contactId: contactIds[0],
-            contactName: contactNames[0],
-            phoneNumber: phoneNumbers[0],
-            script: contents[0],
-            status: 'pending'
-          });
-          console.log(`✅ Call data stored for ${callControlId} (phone: ${phoneNumbers[0]})`);
-        } catch (storageError) {
-          console.error('Error storing call data:', storageError);
-        }
-        const validCallSids = [callControlId];
-        console.log(`📤 Returning ${validCallSids.length} callSids: [${validCallSids.join(', ')}]`);
-        res.status(201).json({
-          success: true,
-          data: {
-            broadcastId: broadcastId,
-            callSids: validCallSids,
-            channelLimitHits: 0,
-          }
-        });
-      }
 
-      return { success: true, phoneNumbers, contactIds, contactNames, contents };
+        await mongodbService.storeCallData(callControlId, {
+          callSid: callControlId,
+          callLegId: call.call_leg_id,
+          callSessionId: call.call_session_id,
+          broadcastId: broadcastId,
+          contactId: contactIds[i] || null,
+          contactName: contactNames[i] || null,
+          phoneNumber: phoneNumber,
+          script: contents[i] || contents[0],
+          status: 'pending'
+        });
 
-    } catch (error) {
-      const errorMsg = error.response?.data?.errors?.[0]?.detail || error.message;
-      const isChannelLimitError = errorMsg.includes('channel limit exceeded') || error.response?.status === 403;
-      
-      if (isChannelLimitError) {
-        channelLimitHits++;
-        
-         const waitTime = Math.min(20000 + (channelLimitHits * 10000), 120000); // Increased wait times
-         console.warn(`⚠️ Channel capacity reached for ${phoneNumbers} (hit #${channelLimitHits}), waiting ${waitTime/1000} seconds and retrying...`);
-        
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-        
-        try {
-          const retryRequest = {
-            connection_id: process.env.TELNYX_CONNECTION_ID,
-            to: phoneNumbers,
-            from: process.env.TELNYX_PHONE_NUMBER || '+18633049991',
-            answering_machine_detection: "detect_words",
-            webhook_url: webhookUrl
-          };
-          const { data: retryCall } = await telnyx.calls.create(retryRequest);
-          const callSessionId = retryCall.call_session_id;
-          
-          // Debug logging for retry
-          console.log(`🔄 Retry Telnyx Response Debug:`);
-          console.log(`  - Phone numbers sent: ${phoneNumbers.length} (${phoneNumbers.join(', ')})`);
-          console.log(`  - Call legs received: ${retryCall.call_legs.length}`);
-          
-          // Validate retry response
-          if (retryCall.call_legs.length !== phoneNumbers.length) {
-            console.warn(`⚠️ RETRY MISMATCH: Expected ${phoneNumbers.length} call legs but received ${retryCall.call_legs.length}`);
-          }
-          
-          // Use only the valid call legs
-          const validRetryCallLegs = retryCall.call_legs.slice(0, phoneNumbers.length);
-          
-          let index = 0;
-          for (const call_leg of validRetryCallLegs) {
-            const callControlId = call_leg.call_control_id;
-            try {
-              await mongodbService.storeCallData(callControlId, {
-                callSid: callControlId,
-                callLegId: call_leg.call_leg_id,
-                callSessionId: callSessionId,
-                broadcastId: broadcastId,
-                contactId: contactIds[index],
-                contactName: contactNames[index],
-                phoneNumber: phoneNumbers[index],
-                script: contents[index],
-                status: 'pending'
-              });
-            } catch (storageError) {
-              console.error('Error storing call data:', storageError);
-            }
-            index++;
-          }
-          
-          const validRetryCallSids = validRetryCallLegs.map(call_leg => call_leg.call_control_id);
-          console.log(`✅ Retry successful for ${phoneNumbers} - returning ${validRetryCallSids.length} callSids`);
-          
-          res.status(201).json({
-            success: true,
-            data: {
-              broadcastId: broadcastId,
-              callSids: validRetryCallSids,
-              channelLimitHits: channelLimitHits,
-            }
+        callSids.push(callControlId);
+        console.log(`Call initiated to ${phoneNumber}: ${callControlId}`);
+
+        //  Add delay between calls to avoid rate limiting
+        if (i < phoneNumbers.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+
+      } catch (error) {
+        const errorMsg = error.response?.data?.errors?.[0]?.detail || error.message;
+        const isChannelLimitError = errorMsg.includes('channel limit exceeded') || error.response?.status === 403;
+
+        if (isChannelLimitError) {
+          channelLimitHits++;
+          const waitTime = Math.min(20000 + (channelLimitHits * 10000), 120000);
+          console.warn(`Channel limit hit for ${phoneNumber}, waiting ${waitTime/1000}s...`);
+
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          i--; // Retry this phone number
+          continue;
+        } else {
+          console.error(`Error calling ${phoneNumber}: ${errorMsg}`);
+          const syntheticSid = `synthetic_${Date.now()}_${i}`;
+          await mongodbService.storeCallData(syntheticSid, {
+            callSid: syntheticSid,
+            broadcastId: broadcastId,
+            phoneNumber: phoneNumber,
+            script: contents[i] || contents[0],
+            status: 'failed',
+            isSynthetic: true,
+            error: errorMsg
           });
-          return { success: true, phoneNumbers, contactIds, contactNames, contents };
-          
-        } catch (retryError) {
-          const retryErrorMsg = retryError.response?.data?.errors?.[0]?.detail || retryError.message;
-          console.error(`❌ Retry failed for ${phoneNumbers}:`, retryErrorMsg);
-          const syntheticCallSids = phoneNumbers.map((_, idx) => `synthetic_${timestamp}_${idx}_${Math.random().toString(36).slice(2,8)}`);
-        try {
-          // Store synthetic call records as pending
-          for (let i = 0; i < syntheticCallSids.length; i++) {
-            const sid = syntheticCallSids[i];
-            try {
-              await mongodbService.storeCallData(sid, {
-                callSid: sid,
-                callLegId: null,
-                callSessionId: null,
-                broadcastId: broadcastId,
-                contactId: contactIds[i],
-                contactName: contactNames[i],
-                phoneNumber: phoneNumbers[i],
-                script: contents[i],
-                status: 'pending',
-                isSynthetic: true
-              });
-            } catch (storageError) {
-              console.error('Error storing synthetic call data:', storageError);
-            }
-          }
-        } catch (e) {
-          console.error('Synthetic storage loop error:', e);
+          callSids.push(syntheticSid);
         }
-        res.status(201).json({
-          success: true,
-          data: {
-            broadcastId: broadcastId,
-            callSids: syntheticCallSids,
-            channelLimitHits: channelLimitHits,
-          }
-        });
-        return { success: true, phoneNumbers, contactIds, contactNames, contents };
-        }
-      } else {
-        console.error(error);
-        console.error(`❌ Error creating call for ${phoneNumbers}:`, errorMsg);
-        // Fallback: generate synthetic callSids so the frontend can proceed
-        const timestamp = Date.now();
-        const syntheticCallSids = phoneNumbers.map((_, idx) => `synthetic_${timestamp}_${idx}_${Math.random().toString(36).slice(2,8)}`);
-        try {
-          // Store synthetic call records as pending
-          for (let i = 0; i < syntheticCallSids.length; i++) {
-            const sid = syntheticCallSids[i];
-            try {
-              await mongodbService.storeCallData(sid, {
-                callSid: sid,
-                callLegId: null,
-                callSessionId: null,
-                broadcastId: broadcastId,
-                contactId: contactIds[i],
-                contactName: contactNames[i],
-                phoneNumber: phoneNumbers[i],
-                script: contents[i],
-                status: 'pending',
-                isSynthetic: true
-              });
-            } catch (storageError) {
-              console.error('Error storing synthetic call data:', storageError);
-            }
-          }
-        } catch (e) {
-          console.error('Synthetic storage loop error:', e);
-        }
-        res.status(201).json({
-          success: true,
-          data: {
-            broadcastId: broadcastId,
-            callSids: syntheticCallSids,
-            channelLimitHits: channelLimitHits,
-          }
-        });
-        return { success: true, phoneNumbers, contactIds, contactNames, contents };
       }
     }
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        broadcastId: broadcastId,
+        callSids: callSids,
+        channelLimitHits: channelLimitHits,
+        totalCalls: phoneNumbers.length
+      }
+    });
+
   } catch (error) {
     console.error('Error in /api/make-call:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Internal server error', 
-      error: error.message 
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error'
     });
   }
 });
